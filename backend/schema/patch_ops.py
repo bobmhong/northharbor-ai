@@ -71,7 +71,7 @@ def _resolve_parent(
     current = obj
     for seg in segments[:-1]:
         if isinstance(current, BaseModel):
-            if seg not in current.model_fields:
+            if seg not in type(current).model_fields:
                 raise ValueError(f"Unknown field '{seg}'")
             current = getattr(current, seg)
         elif isinstance(current, dict):
@@ -87,9 +87,10 @@ def _resolve_parent(
 
 def _apply_set(parent: Any, key: str, patch: PatchOp) -> None:
     if isinstance(parent, BaseModel):
-        if key not in parent.model_fields:
+        cls_fields = type(parent).model_fields
+        if key not in cls_fields:
             raise ValueError(f"Unknown field '{key}'")
-        annotation = parent.model_fields[key].annotation
+        annotation = cls_fields[key].annotation
         if _is_provenance_annotation(annotation):
             new_pf = ProvenanceField(
                 value=patch.value,
@@ -113,9 +114,10 @@ def _apply_set(parent: Any, key: str, patch: PatchOp) -> None:
 
 def _apply_remove(parent: Any, key: str) -> None:
     if isinstance(parent, BaseModel):
-        if key not in parent.model_fields:
+        cls_fields = type(parent).model_fields
+        if key not in cls_fields:
             raise ValueError(f"Unknown field '{key}'")
-        annotation = parent.model_fields[key].annotation
+        annotation = cls_fields[key].annotation
         is_optional = False
         origin = get_origin(annotation)
         if origin is types.UnionType:
