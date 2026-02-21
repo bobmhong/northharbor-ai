@@ -145,3 +145,23 @@ class TestInterviewSessionFallback(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("4-digit birth year", turn.assistant_message)
         self.assertIn("What year were you born?", turn.assistant_message)
+
+    async def test_invalid_birth_year_too_early_gets_specific_feedback(self) -> None:
+        session = InterviewSession(_make_schema(), llm=StubLLMClient())
+        session.start()
+        await session.respond("bob jones")
+
+        turn = await session.respond("1800")
+
+        self.assertIn("too early", turn.assistant_message.lower())
+        self.assertIn("between 1900", turn.assistant_message)
+
+    async def test_invalid_birth_year_future_gets_specific_feedback(self) -> None:
+        session = InterviewSession(_make_schema(), llm=StubLLMClient())
+        session.start()
+        await session.respond("bob jones")
+
+        turn = await session.respond("2099")
+
+        self.assertIn("future year", turn.assistant_message.lower())
+        self.assertIn("birth year", turn.assistant_message.lower())

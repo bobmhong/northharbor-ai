@@ -42,11 +42,13 @@ class InterviewTurnResult(BaseModel):
 
 _NAME_PREFIX_RE = re.compile(r"^(?:my name is|i am|i'm)\s+", flags=re.IGNORECASE)
 _NAME_TOKEN_RE = re.compile(r"^[A-Za-z][A-Za-z'-]*$")
-_BIRTH_YEAR_RE = re.compile(r"\b(19\d{2}|20\d{2})\b")
+_BIRTH_YEAR_RE = re.compile(r"\b(\d{4})\b")
 _WORD_TEXT_RE = re.compile(r"^[A-Za-z][A-Za-z .'-]{1,49}$")
 _NUMBER_RE = re.compile(r"[-+]?\d+(?:,\d{3})*(?:\.\d+)?")
 _RANGE_RE = re.compile(r"(\d{2})\D+(\d{2})")
 _AFFIRMATIVE_REPLIES = {"y", "yes", "yeah", "yep", "correct", "right", "that is right"}
+_MIN_BIRTH_YEAR = 1900
+_MAX_REASONABLE_AGE = 110
 
 
 def _extract_full_name_fallback(user_message: str) -> str | None:
@@ -82,7 +84,9 @@ def _extract_birth_year_fallback(user_message: str) -> int | None:
 
     year = int(match.group(1))
     current_year = datetime.now(timezone.utc).year
-    if year < 1900 or year > current_year:
+    if year < _MIN_BIRTH_YEAR or year > current_year:
+        return None
+    if current_year - year > _MAX_REASONABLE_AGE:
         return None
     return year
 
@@ -251,6 +255,25 @@ def _invalid_input_feedback(
         return "I couldn't quite read that as a full name. Please share first and last name."
 
     if target_field == "client.birth_year":
+        current_year = datetime.now(timezone.utc).year
+        year_match = _BIRTH_YEAR_RE.search(text)
+        if year_match:
+            year = int(year_match.group(1))
+            if year > current_year:
+                return (
+                    f"{year} looks like a future year. Please share your actual birth year "
+                    f"(for example, 1982)."
+                )
+            if year < _MIN_BIRTH_YEAR:
+                return (
+                    f"{year} seems too early to be correct. Please enter a realistic 4-digit "
+                    f"birth year between {_MIN_BIRTH_YEAR} and {current_year}."
+                )
+            if current_year - year > _MAX_REASONABLE_AGE:
+                return (
+                    "That birth year would imply an age over 110, which is usually a typo. "
+                    "Please double-check the year."
+                )
         return (
             "I need a 4-digit birth year so I can calculate age-based projections. "
             "For example: \"1982.\""
@@ -265,6 +288,9 @@ def _invalid_input_feedback(
         "social_security.combined_at_70_monthly",
         "monte_carlo.legacy_floor",
     }:
+        amount_number = _parse_number(text)
+        if amount_number is not None and amount_number < 0:
+            return "That amount is negative. Please enter a positive number."
         return (
             "I need a numeric amount for that field. You can enter values like "
             "\"185000\" or \"$185,000.\""
@@ -275,17 +301,42 @@ def _invalid_input_feedback(
         "monte_carlo.required_success_rate",
         "accounts.savings_rate_percent",
     }:
+        percent_number = _parse_number(text)
+        if percent_number is not None and "%" in text and percent_number > 100:
+            return "That percentage is above 100%. Please enter a value between 0% and 100%."
+        if percent_number is not None and percent_number > 100:
+            return (
+                "That value is too large for a percentage. Please use something like "
+                "\"15%\" or \"0.15.\""
+            )
         return (
             "I need a percentage for that value. You can reply with something like "
             "\"15%\" or \"0.15.\""
         )
 
     if target_field == "client.retirement_window":
+        range_match = _RANGE_RE.search(text)
+        if range_match:
+            lo = int(range_match.group(1))
+            hi = int(range_match.group(2))
+            if lo > hi:
+                return (
+                    "I read the range backwards. Please share retirement ages from lower to "
+                    "higher, like \"62 to 67.\""
+                )
+            if lo < 40 or hi > 80:
+                return "Please use a realistic retirement age range between 40 and 80."
+        else:
+            single_age = _parse_number(text)
+            if single_age is not None and (single_age < 40 or single_age > 80):
+                return "Please use a realistic retirement age between 40 and 80."
         return (
             "I need a retirement age or range, like \"65\" or \"65 to 67.\""
         )
 
     if target_field in {"location.state", "location.city"}:
+        if any(ch.isdigit() for ch in text):
+            return "That looks like it includes numbers. Please enter a city/state name in words."
         return "I need a place name there (for example, \"Washington\" or \"Seattle\")."
 
     if target_field == "housing.status":
@@ -298,9 +349,15 @@ def _invalid_input_feedback(
         )
 
     if target_field == "social_security.claiming_preference":
+        claiming_age = _parse_number(text)
+        if claiming_age is not None and not (62 <= int(claiming_age) <= 70):
+            return "Claiming age should be between 62 and 70."
         return "Please provide a claiming age between 62 and 70 (for example, \"67\")."
 
     if target_field == "monte_carlo.horizon_age":
+        horizon_age = _parse_number(text)
+        if horizon_age is not None and not (80 <= int(horizon_age) <= 120):
+            return "Projection horizon age is usually between 80 and 120."
         return "Please provide an age for the projection horizon, usually between 80 and 120."
 
     return None
