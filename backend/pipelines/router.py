@@ -184,6 +184,43 @@ async def delete_plan(plan_id: str, req: DeletePlanRequest) -> dict[str, bool]:
     return {"deleted": True}
 
 
+class UpdateScenarioNameRequest(BaseModel):
+    owner_id: str = "anonymous"
+    scenario_name: str
+
+
+@router.patch("/plans/{plan_id}/scenario-name", response_model=PlanSummary)
+async def update_scenario_name(plan_id: str, req: UpdateScenarioNameRequest) -> PlanSummary:
+    """Update the scenario name for a plan, ensuring uniqueness per client."""
+    plan = get_plan(plan_id)
+    if plan is None or plan.owner_id != req.owner_id:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    
+    new_name = req.scenario_name.strip()
+    if not new_name:
+        raise HTTPException(status_code=400, detail="Scenario name cannot be empty")
+    
+    client_name = _plan_client_name(plan)
+    
+    existing_names = {
+        p.scenario_name
+        for p in list_owner_plans(req.owner_id)
+        if _plan_client_name(p) == client_name and p.plan_id != plan_id
+    }
+    
+    if new_name in existing_names:
+        raise HTTPException(
+            status_code=409,
+            detail=f"A scenario named '{new_name}' already exists for this client"
+        )
+    
+    plan.scenario_name = new_name
+    plan.updated_at = datetime.now(timezone.utc)
+    store_plan(plan)
+    
+    return _to_summary(plan)
+
+
 @router.post("/plans/{plan_id}/copy", response_model=PlanSummary)
 async def copy_plan(plan_id: str, req: CopyPlanRequest) -> PlanSummary:
     """Create a new scenario by copying an existing plan."""

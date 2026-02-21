@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams, useLocation } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import ChatInput, { detectEditIntent } from "../components/interview/ChatInput";
 import ChatMessage from "../components/interview/ChatMessage";
 import { useInterviewStore } from "../stores/interviewStore";
@@ -9,7 +10,9 @@ let startInterviewInFlight: Promise<void> | null = null;
 
 export default function InterviewPage() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const planIdParam = searchParams.get("plan_id") ?? undefined;
   const scrollRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -51,6 +54,10 @@ export default function InterviewPage() {
     try {
       const res = await api.startInterview({ planId: planIdParam });
       setSession(res.session_id, res.plan_id);
+      
+      if (!planIdParam && res.plan_id) {
+        setSearchParams({ plan_id: res.plan_id }, { replace: true });
+      }
       
       if (res.is_resumed && res.history.length > 0) {
         const historyMessages = res.history.map((h) => ({
@@ -103,6 +110,8 @@ export default function InterviewPage() {
         const res = await api.respond(activeSessionId, message);
         addMessage("assistant", res.message);
         if (res.interview_complete) setComplete(true);
+        
+        queryClient.invalidateQueries({ queryKey: ["plan", planId || planIdParam] });
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : "";
         if (errorMessage.toLowerCase().includes("session not found")) {
@@ -161,6 +170,8 @@ export default function InterviewPage() {
           const res = await api.respond(sessionId, `[Correction] My previous answer should be: ${newContent}`);
           addMessage("assistant", res.message);
           if (res.interview_complete) setComplete(true);
+          
+          queryClient.invalidateQueries({ queryKey: ["plan", planId || planIdParam] });
         } catch {
           addMessage("assistant", "I've noted your correction. Let's continue.");
         } finally {
@@ -168,7 +179,7 @@ export default function InterviewPage() {
         }
       }
     },
-    [sessionId, updateMessage, addMessage, setLoading, setComplete, setEditing]
+    [sessionId, planId, planIdParam, queryClient, updateMessage, addMessage, setLoading, setComplete, setEditing]
   );
 
   const handleSendWithEditDetection = useCallback(

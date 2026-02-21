@@ -74,4 +74,11 @@ export const api = {
       body: JSON.stringify({ owner_id: ownerId }),
     });
   },
+
+  updateScenarioName(planId: string, scenarioName: string, ownerId = "anonymous") {
+    return request<PlanSummary>(`/plans/${planId}/scenario-name`, {
+      method: "PATCH",
+      body: JSON.stringify({ owner_id: ownerId, scenario_name: scenarioName }),
+    });
+  },
 };

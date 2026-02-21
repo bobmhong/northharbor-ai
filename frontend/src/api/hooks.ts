@@ -89,3 +89,22 @@ export function useDeletePlan() {
     },
   });
 }
+
+export function useUpdateScenarioName() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      planId,
+      scenarioName,
+      ownerId,
+    }: {
+      planId: string;
+      scenarioName: string;
+      ownerId?: string;
+    }) => api.updateScenarioName(planId, scenarioName, ownerId),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["plans"] });
+      queryClient.invalidateQueries({ queryKey: ["plan", variables.planId] });
+    },
+  });
+}

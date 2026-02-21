@@ -1,7 +1,10 @@
-import { useEffect } from "react";
-import { Link, Outlet, useLocation, useParams, useSearchParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { cn } from "../../lib/utils";
-import { usePlan } from "../../api/hooks";
+import { usePlan, usePlans, useUpdateScenarioName } from "../../api/hooks";
+import { useInterviewStore } from "../../stores/interviewStore";
+import EditScenarioModal from "./EditScenarioModal";
+import ConfirmModal from "./ConfirmModal";
 import logoCropped from "../../../../logo-cropped.jpeg";
 
 const NAV_ITEMS = [
@@ -51,10 +54,18 @@ function extractPlanId(pathname: string, search: string): string | undefined {
 
 export default function Layout() {
   const location = useLocation();
+  const navigate = useNavigate();
   const breadcrumbs = getBreadcrumbs(location.pathname);
+  const [showEditScenario, setShowEditScenario] = useState(false);
+  const [showNewInterviewConfirm, setShowNewInterviewConfirm] = useState(false);
+  
+  const { sessionId, isComplete, planId: activeInterviewPlanId, reset: resetInterview } = useInterviewStore();
+  const hasActiveInterview = sessionId !== null && !isComplete;
   
   const planId = extractPlanId(location.pathname, location.search);
-  const { data: plan } = usePlan(planId);
+  const { data: plan, refetch: refetchPlan } = usePlan(planId);
+  const { data: allPlans } = usePlans();
+  const updateScenarioName = useUpdateScenarioName();
   
   const planData = plan as Record<string, unknown> | undefined;
   const clientObj = planData?.client as Record<string, unknown> | undefined;
@@ -62,12 +73,66 @@ export default function Layout() {
   const clientName = typeof nameField?.value === "string" ? nameField.value : null;
   const scenarioName = typeof planData?.scenario_name === "string" ? planData.scenario_name : null;
 
+  const existingScenarioNames = (allPlans ?? [])
+    .filter((p) => p.client_name === (clientName || "Client") && p.plan_id !== planId)
+    .map((p) => p.scenario_name);
+
+  async function handleUpdateScenarioName(newName: string) {
+    if (!planId) return;
+    try {
+      await updateScenarioName.mutateAsync({ planId, scenarioName: newName });
+      setShowEditScenario(false);
+    } catch {
+      // Error is handled by the mutation
+    }
+  }
+
+  function handleNewInterviewClick(e: React.MouseEvent) {
+    if (hasActiveInterview) {
+      e.preventDefault();
+      setShowNewInterviewConfirm(true);
+    }
+  }
+
+  function handleStartNewInterview() {
+    resetInterview();
+    setShowNewInterviewConfirm(false);
+    navigate("/interview");
+  }
+
+  function handleContinueInterview() {
+    setShowNewInterviewConfirm(false);
+    if (activeInterviewPlanId) {
+      navigate(`/interview?plan_id=${activeInterviewPlanId}`);
+    }
+  }
+
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
   }, [location.pathname]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-subtle">
+    <>
+      <EditScenarioModal
+        isOpen={showEditScenario}
+        onClose={() => setShowEditScenario(false)}
+        onConfirm={handleUpdateScenarioName}
+        existingNames={existingScenarioNames}
+        currentName={scenarioName || "Default"}
+        isPending={updateScenarioName.isPending}
+        error={updateScenarioName.error?.message}
+      />
+      <ConfirmModal
+        isOpen={showNewInterviewConfirm}
+        title="Interview in Progress"
+        message="You have an interview in progress. Would you like to continue where you left off, or start a completely new interview?"
+        confirmLabel="Start New"
+        cancelLabel="Continue Current"
+        onConfirm={handleStartNewInterview}
+        onCancel={handleContinueInterview}
+        variant="warning"
+      />
+      <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <header className="sticky top-0 z-50 header-gradient shrink-0">
         <div className="mx-auto flex h-16 sm:h-20 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link to="/" className="group flex items-center gap-3 sm:gap-4 shrink-0">
@@ -93,6 +158,7 @@ export default function Layout() {
               <Link
                 key={item.path}
                 to={item.path}
+                onClick={item.path === "/interview" ? handleNewInterviewClick : undefined}
                 className={cn(
                   "relative rounded-lg sm:rounded-xl px-2.5 sm:px-4 py-2 text-xs sm:text-sm font-semibold transition-all duration-200",
                   location.pathname.startsWith(item.path)
@@ -133,27 +199,30 @@ export default function Layout() {
               ))}
             </div>
             
-            {(clientName || scenarioName) && (
+            {planId && (
               <div className="flex items-center gap-3 text-sm">
-                {clientName && (
-                  <div className="flex items-center gap-1.5">
-                    <svg className="h-4 w-4 text-sage-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
+                <div className="flex items-center gap-1.5">
+                  <svg className="h-4 w-4 text-sage-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  {clientName && (
                     <span className="font-medium text-harbor-700">{clientName}</span>
-                  </div>
-                )}
-                {clientName && scenarioName && (
-                  <span className="text-sage-300">•</span>
-                )}
-                {scenarioName && (
-                  <div className="flex items-center gap-1.5">
-                    <svg className="h-4 w-4 text-sage-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    <span className="text-sage-600">{scenarioName}</span>
-                  </div>
-                )}
+                  )}
+                </div>
+                <span className="text-sage-300">•</span>
+                <button
+                  onClick={() => setShowEditScenario(true)}
+                  className="flex items-center gap-1.5 group/scenario rounded-lg px-2 py-1 -mx-2 -my-1 transition-colors hover:bg-sage-100"
+                  title="Click to edit scenario name"
+                >
+                  <svg className="h-4 w-4 text-sage-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <span className="text-sage-600">{scenarioName || "Default"}</span>
+                  <svg className="h-3 w-3 text-sage-400 opacity-0 group-hover/scenario:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  </svg>
+                </button>
               </div>
             )}
           </nav>
@@ -172,5 +241,6 @@ export default function Layout() {
         </div>
       </footer>
     </div>
+    </>
   );
 }

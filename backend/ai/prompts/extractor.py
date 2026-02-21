@@ -21,6 +21,8 @@ Rules:
 - For numeric values, extract raw numbers (no formatting)
 - For ranges, use {"min": N, "max": N}
 - If the user says something irrelevant or you cannot extract data, return empty patch_ops
+- For yes/no questions about amounts (like legacy goals), if user says "no", "none", "zero", 
+  "I don't have one", or similar negative responses, set the value to 0 with high confidence
 
 Valid top-level field paths:
   client.name, client.birth_year, client.current_age, client.retirement_window

@@ -32,7 +32,6 @@ export default function DashboardPage() {
   const charts = result?.outputs.chart_specs ?? [];
   const tables = result?.outputs.tables ?? [];
   const recommendations = result?.outputs.recommendations ?? [];
-  const displayName = typeof plan?.display_name === "string" ? plan.display_name : planId ?? "Plan";
   const currentScenarioName = typeof plan?.scenario_name === "string" ? plan.scenario_name : "Default";
   
   const existingScenarioNames = (allPlans ?? []).map((p) => p.scenario_name);
@@ -65,7 +64,6 @@ export default function DashboardPage() {
       <div className="mb-6 sm:mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="page-title">Dashboard</h1>
-          <p className="page-subtitle">{displayName}</p>
         </div>
         <div className="flex flex-wrap gap-3">
           <button

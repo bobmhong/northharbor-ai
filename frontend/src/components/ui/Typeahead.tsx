@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { cn } from "../../lib/utils";
 
 interface TypeaheadOption {
@@ -34,11 +34,23 @@ export default function Typeahead({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
 
-  const filteredOptions = options.filter(
-    (opt) =>
-      opt.label.toLowerCase().includes(value.toLowerCase()) ||
-      opt.value.toLowerCase().includes(value.toLowerCase())
+  const filteredOptions = useMemo(() => 
+    options.filter(
+      (opt) =>
+        opt.label.toLowerCase().includes(value.toLowerCase()) ||
+        opt.value.toLowerCase().includes(value.toLowerCase())
+    ),
+    [options, value]
   );
+
+  const autocompleteMatch = useMemo(() => {
+    if (!value.trim()) return null;
+    const lowerValue = value.toLowerCase();
+    const match = options.find(
+      (opt) => opt.label.toLowerCase().startsWith(lowerValue)
+    );
+    return match || null;
+  }, [options, value]);
 
   const showCustomOption =
     allowCustom &&
@@ -53,11 +65,22 @@ export default function Typeahead({
     setHighlightedIndex(0);
   }, [value]);
 
+  const prevDisabledRef = useRef(disabled);
+  
   useEffect(() => {
     if (autoFocus && inputRef.current) {
       inputRef.current.focus();
     }
   }, [autoFocus]);
+
+  useEffect(() => {
+    if (prevDisabledRef.current && !disabled && inputRef.current) {
+      requestAnimationFrame(() => {
+        inputRef.current?.focus();
+      });
+    }
+    prevDisabledRef.current = disabled;
+  }, [disabled]);
 
   useEffect(() => {
     if (isOpen && listRef.current) {
@@ -100,7 +123,13 @@ export default function Typeahead({
         setIsOpen(false);
         break;
       case "Tab":
-        setIsOpen(false);
+        if (autocompleteMatch && value.trim()) {
+          e.preventDefault();
+          onChange(autocompleteMatch.label);
+          setIsOpen(true);
+        } else {
+          setIsOpen(false);
+        }
         break;
     }
   }
@@ -111,35 +140,56 @@ export default function Typeahead({
     inputRef.current?.focus();
   }
 
+  const ghostText = autocompleteMatch && value.trim() 
+    ? autocompleteMatch.label.slice(value.length) 
+    : "";
+
   return (
     <div className="relative w-full">
-      <input
-        ref={inputRef}
-        type="text"
-        value={value}
-        onChange={(e) => {
-          onChange(e.target.value);
-          setIsOpen(true);
-        }}
-        onFocus={() => setIsOpen(true)}
-        onBlur={() => {
-          setTimeout(() => setIsOpen(false), 150);
-        }}
-        onKeyDown={handleKeyDown}
-        placeholder={placeholder}
-        disabled={disabled}
-        className="input-field w-full"
-        autoComplete="off"
-        role="combobox"
-        aria-expanded={isOpen}
-        aria-haspopup="listbox"
-        aria-autocomplete="list"
-      />
+      <div className="relative">
+        {ghostText && (
+          <div 
+            className="absolute inset-0 flex items-center pointer-events-none px-4 py-3"
+            aria-hidden="true"
+          >
+            <span className="invisible">{value}</span>
+            <span className="text-sage-400">{ghostText}</span>
+          </div>
+        )}
+        <input
+          ref={inputRef}
+          type="text"
+          value={value}
+          onChange={(e) => {
+            onChange(e.target.value);
+            setIsOpen(true);
+          }}
+          onFocus={() => setIsOpen(true)}
+          onBlur={() => {
+            setTimeout(() => setIsOpen(false), 150);
+          }}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          disabled={disabled}
+          className="input-field w-full bg-transparent relative"
+          autoComplete="off"
+          role="combobox"
+          aria-expanded={isOpen}
+          aria-haspopup="listbox"
+          aria-autocomplete="list"
+        />
+      </div>
+
+      {ghostText && value.trim() && (
+        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-sage-400 pointer-events-none">
+          Tab to complete
+        </div>
+      )}
 
       {isOpen && totalOptions > 0 && (
         <ul
           ref={listRef}
-          className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-sage-200 bg-white py-1 shadow-elevated"
+          className="absolute z-50 bottom-full mb-2 max-h-60 w-full overflow-auto rounded-xl border border-sage-200 bg-white py-1 shadow-elevated"
           role="listbox"
         >
           {filteredOptions.map((option, index) => (
