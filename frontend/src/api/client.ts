@@ -1,0 +1,56 @@
+import type {
+  PipelineResult,
+  PlanSummary,
+  ReportArtifact,
+  RespondResponse,
+  StartInterviewResponse,
+} from "../types/api";
+
+const BASE = "/api";
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    headers: { "Content-Type": "application/json" },
+    ...init,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `Request failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export const api = {
+  startInterview(ownerId = "anonymous") {
+    return request<StartInterviewResponse>("/interview/start", {
+      method: "POST",
+      body: JSON.stringify({ owner_id: ownerId }),
+    });
+  },
+
+  respond(sessionId: string, message: string) {
+    return request<RespondResponse>("/interview/respond", {
+      method: "POST",
+      body: JSON.stringify({ session_id: sessionId, message }),
+    });
+  },
+
+  runPipeline(planId: string, ownerId = "anonymous", seed = 42) {
+    return request<PipelineResult>("/pipelines/run", {
+      method: "POST",
+      body: JSON.stringify({ plan_id: planId, owner_id: ownerId, seed }),
+    });
+  },
+
+  getReport(reportId: string) {
+    return request<ReportArtifact>(`/reports/${reportId}`);
+  },
+
+  listPlans(ownerId = "anonymous") {
+    return request<PlanSummary[]>(`/plans?owner_id=${ownerId}`);
+  },
+
+  getPlan(planId: string) {
+    return request<Record<string, unknown>>(`/plans/${planId}`);
+  },
+};
