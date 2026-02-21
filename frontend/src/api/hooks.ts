@@ -27,7 +27,8 @@ export function useReport(reportId: string | undefined) {
 export function useStartInterview() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (ownerId?: string) => api.startInterview(ownerId),
+    mutationFn: (params?: { ownerId?: string; planId?: string }) =>
+      api.startInterview(params),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["plans"] });
     },
@@ -52,5 +53,39 @@ export function useRunPipeline() {
       ownerId?: string;
       seed?: number;
     }) => api.runPipeline(planId, ownerId, seed),
+  });
+}
+
+export function useCopyPlan() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      planId,
+      scenarioName,
+      ownerId,
+    }: {
+      planId: string;
+      scenarioName?: string;
+      ownerId?: string;
+    }) => api.copyPlan(planId, scenarioName, ownerId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["plans"] });
+    },
+  });
+}
+
+export function useDeletePlan() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      planId,
+      ownerId,
+    }: {
+      planId: string;
+      ownerId?: string;
+    }) => api.deletePlan(planId, ownerId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["plans"] });
+    },
   });
 }

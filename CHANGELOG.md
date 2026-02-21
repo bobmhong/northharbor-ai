@@ -16,10 +16,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - React frontend with chat interface
 
 ### Changed
-- _None yet_
+- Added managed dev lifecycle tasks: `dev:up`, `dev:down`, and `dev:status`
+- Interview responses now use client-facing language instead of internal field labels
+- Plan and dashboard listings now show human-readable plan names (`<Client Name> - <Scenario Name>`)
 
 ### Fixed
-- _None yet_
+- Interview fallback extraction now handles common name, birth year, location, and numeric inputs more reliably
+- Validation feedback now explains why inputs are invalid with actionable examples
+- Confirm prompts now accept affirmative replies (e.g., "yes") and move forward
+- Frontend interview submit flow now recovers from expired sessions after backend reloads
+- Optional question prompts now request concrete values instead of ambiguous yes/no consent
+- Interview sessions and plans now persist across backend restarts
 
 ### Removed
 - _None yet_

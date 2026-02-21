@@ -1,8 +1,16 @@
+export interface HistoryMessage {
+  role: "user" | "assistant";
+  content: string;
+  timestamp: string;
+}
+
 export interface StartInterviewResponse {
   session_id: string;
   plan_id: string;
   message: string;
   interview_complete: boolean;
+  history: HistoryMessage[];
+  is_resumed: boolean;
 }
 
 export interface RespondResponse {
@@ -15,6 +23,9 @@ export interface RespondResponse {
 
 export interface PlanSummary {
   plan_id: string;
+  display_name: string;
+  client_name: string;
+  scenario_name: string;
   owner_id: string;
   status: string;
   created_at: string;

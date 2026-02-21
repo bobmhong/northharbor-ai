@@ -38,6 +38,7 @@ htmlcov/
 *.pdf
 *.xlsx
 .task/dev/
+.data/
 
 # pip install artifacts
 =*

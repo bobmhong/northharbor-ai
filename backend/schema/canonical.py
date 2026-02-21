@@ -161,6 +161,8 @@ class CanonicalPlanSchema(BaseModel):
     schema_version: str = "1.0"
     plan_id: str
     owner_id: str
+    scenario_name: str = "Default"
+    base_plan_id: str | None = None
     status: PlanStatus = "intake_in_progress"
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)

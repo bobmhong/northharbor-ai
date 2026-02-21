@@ -21,10 +21,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  startInterview(ownerId = "anonymous") {
+  startInterview(params?: { ownerId?: string; planId?: string }) {
+    const ownerId = params?.ownerId ?? "anonymous";
     return request<StartInterviewResponse>("/interview/start", {
       method: "POST",
-      body: JSON.stringify({ owner_id: ownerId }),
+      body: JSON.stringify({
+        owner_id: ownerId,
+        plan_id: params?.planId ?? null,
+      }),
     });
   },
 
@@ -52,5 +56,22 @@ export const api = {
 
   getPlan(planId: string) {
     return request<Record<string, unknown>>(`/plans/${planId}`);
+  },
+
+  copyPlan(planId: string, scenarioName?: string, ownerId = "anonymous") {
+    return request<PlanSummary>(`/plans/${planId}/copy`, {
+      method: "POST",
+      body: JSON.stringify({
+        owner_id: ownerId,
+        scenario_name: scenarioName ?? null,
+      }),
+    });
+  },
+
+  deletePlan(planId: string, ownerId = "anonymous") {
+    return request<{ deleted: boolean }>(`/plans/${planId}`, {
+      method: "DELETE",
+      body: JSON.stringify({ owner_id: ownerId }),
+    });
   },
 };
