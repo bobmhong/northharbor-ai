@@ -1,0 +1,52 @@
+---
+description: NorthHarbor AI project conventions for documentation, commits, and contributions
+alwaysApply: true
+---
+
+# Project Conventions
+
+## Documentation Structure
+
+```
+docs/
+├── overview.md          # Consumer perspective, capabilities
+├── architecture.md      # High-level system design
+├── roadmap.md           # Current and planned work
+├── admin/               # Operational guides
+└── design/              # Technical design documents
+```
+
+## Design Documents
+
+For significant changes, create a design doc in `docs/design/`:
+
+1. Copy `docs/design/template.md` to `docs/design/NNN-feature-name.md`
+2. Use sequential numbering (001, 002, etc.)
+3. Fill in all relevant sections
+4. Submit as a PR for review
+
+## Commit Messages
+
+Use conventional commits:
+
+```
+feat: add Monte Carlo visualization
+fix: correct projection calculation
+docs: update architecture diagram
+refactor: extract simulation logic
+test: add interview flow tests
+chore: update dependencies
+```
+
+## Pull Requests
+
+- Reference related issues: `Closes #123`
+- Update documentation when adding features
+- Ensure tests pass before requesting review
+
+## Code Changes
+
+- Read files before editing
+- Run linters after changes
+- Update CHANGELOG.md for user-facing changes
+- Add design doc for architectural changes

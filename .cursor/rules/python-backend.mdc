@@ -1,0 +1,58 @@
+---
+description: Python backend conventions for FastAPI services
+globs: backend/**/*.py
+alwaysApply: false
+---
+
+# Python Backend Standards
+
+## Code Style
+
+- Follow PEP 8
+- Use type hints for all function signatures
+- Format with `ruff format`
+- Lint with `ruff check`
+
+## FastAPI Patterns
+
+```python
+# ✅ Use Pydantic models for request/response
+class CreatePlanRequest(BaseModel):
+    name: str
+    client_id: UUID
+
+@router.post("/plans", response_model=PlanResponse)
+async def create_plan(request: CreatePlanRequest) -> PlanResponse:
+    ...
+
+# ✅ Use dependency injection
+async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
+    ...
+
+# ✅ Use HTTPException for errors
+if not plan:
+    raise HTTPException(status_code=404, detail="Plan not found")
+```
+
+## Error Handling
+
+```python
+# ❌ BAD - silent failures
+try:
+    result = await process()
+except Exception:
+    pass
+
+# ✅ GOOD - log and re-raise or handle explicitly
+try:
+    result = await process()
+except ProcessingError as e:
+    logger.error("Processing failed", exc_info=e)
+    raise HTTPException(status_code=500, detail="Processing failed")
+```
+
+## Testing
+
+- Place tests in `tests/` mirroring `backend/` structure
+- Use pytest fixtures for common setup
+- Test happy path and error cases

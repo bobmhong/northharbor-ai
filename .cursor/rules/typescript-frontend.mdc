@@ -1,0 +1,60 @@
+---
+description: TypeScript and React conventions for frontend
+globs: frontend/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# Frontend Standards
+
+## TypeScript
+
+- Use strict mode (already configured in tsconfig)
+- Define types in `src/types/`
+- Prefer interfaces for object shapes, types for unions
+
+```typescript
+// ✅ Define API types
+interface Plan {
+  id: string;
+  name: string;
+  createdAt: Date;
+}
+
+// ✅ Use explicit return types for complex functions
+function calculateProjection(input: PlanInput): ProjectionResult {
+  ...
+}
+```
+
+## React Components
+
+- Use functional components with hooks
+- Place page components in `src/pages/`
+- Place reusable components in `src/components/`
+- Colocate component-specific logic
+
+```tsx
+// ✅ Component structure
+export function InterviewPage() {
+  const { messages, sendMessage } = useInterviewStore();
+  
+  return (
+    <Layout>
+      <ChatMessages messages={messages} />
+      <ChatInput onSend={sendMessage} />
+    </Layout>
+  );
+}
+```
+
+## State Management
+
+- Use Zustand stores in `src/stores/`
+- Keep stores focused on single domains
+- Use React Query (`src/api/hooks.ts`) for server state
+
+## Styling
+
+- Use Tailwind CSS utility classes
+- Extract repeated patterns to components
+- Follow mobile-first responsive design

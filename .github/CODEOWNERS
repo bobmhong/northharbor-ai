@@ -1,0 +1,19 @@
+# Default owners for everything
+*                           @bobmhong
+
+# Backend
+/backend/                   @bobmhong
+/backend/security/          @bobmhong
+/backend/ai/                @bobmhong
+/backend/interview/         @bobmhong
+/backend/pipelines/         @bobmhong
+
+# Frontend
+/frontend/                  @bobmhong
+
+# Documentation
+/docs/                      @bobmhong
+
+# Infrastructure & CI
+/.github/workflows/         @bobmhong
+/docker-compose*.yml        @bobmhong
