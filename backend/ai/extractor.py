@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 from typing import Any, Protocol
 
+import httpx
+
 from backend.ai.guardrails import validate_extractor_output
 from backend.ai.prompts.extractor import (
     EXTRACTOR_SYSTEM_PROMPT,
@@ -54,6 +56,110 @@ class StubLLMClient:
                 "rationale": "Stub LLM -- no extraction performed.",
             }
         )
+
+
+class OllamaLLMClient:
+    """LLM client backed by a local Ollama server."""
+
+    def __init__(
+        self,
+        *,
+        base_url: str = "http://localhost:11434",
+        timeout_seconds: float = 30.0,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.timeout_seconds = timeout_seconds
+
+    async def create(
+        self,
+        *,
+        model: str,
+        messages: list[dict[str, str]],
+        temperature: float,
+        response_format: dict[str, str] | None,
+    ) -> str:
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "stream": False,
+            "options": {"temperature": temperature},
+        }
+        if response_format and response_format.get("type") == "json_object":
+            payload["format"] = "json"
+
+        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+            response = await client.post(
+                f"{self.base_url}/api/chat",
+                json=payload,
+            )
+            response.raise_for_status()
+            data = response.json()
+
+        content = data.get("message", {}).get("content")
+        if not isinstance(content, str):
+            raise ValueError("Ollama response did not include assistant message content")
+        return content
+
+
+class OpenAILLMClient:
+    """LLM client backed by OpenAI chat completions API."""
+
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        base_url: str = "https://api.openai.com/v1",
+        timeout_seconds: float = 45.0,
+    ) -> None:
+        self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
+        self.timeout_seconds = timeout_seconds
+
+    async def create(
+        self,
+        *,
+        model: str,
+        messages: list[dict[str, str]],
+        temperature: float,
+        response_format: dict[str, str] | None,
+    ) -> str:
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+        }
+        if response_format:
+            payload["response_format"] = response_format
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+            response = await client.post(
+                f"{self.base_url}/chat/completions",
+                headers=headers,
+                json=payload,
+            )
+            response.raise_for_status()
+            data = response.json()
+
+        choices = data.get("choices", [])
+        if not choices:
+            raise ValueError("OpenAI response did not include choices")
+
+        content = choices[0].get("message", {}).get("content")
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            text_parts = [
+                part.get("text", "")
+                for part in content
+                if isinstance(part, dict) and part.get("type") == "text"
+            ]
+            return "".join(text_parts)
+        raise ValueError("OpenAI response did not include assistant message content")
 
 
 async def extract_patches(

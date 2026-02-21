@@ -4,11 +4,25 @@ Thank you for your interest in contributing to NorthHarbor AI!
 
 ## Getting Started
 
-1. Fork the repository
-2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/northharbor-ai.git`
-3. Create a virtual environment: `python -m venv .venv && source .venv/bin/activate`
-4. Install dependencies: `pip install -r backend/requirements.txt`
-5. Install frontend dependencies: `cd frontend && npm install`
+1. Choose one clone workflow:
+   - Clone the canonical upstream repository:
+     `git clone https://github.com/bobmhong/northharbor-ai.git`
+   - Or fork first, then clone your fork:
+     `git clone https://github.com/YOUR_USERNAME/northharbor-ai.git`
+2. If you forked, add upstream so you can sync future changes:
+   `git remote add upstream https://github.com/bobmhong/northharbor-ai.git`
+3. Ensure prerequisites are installed:
+   - Python 3.11+
+   - Node.js 20+ and npm
+   - `task` from [taskfile.dev](https://taskfile.dev/)
+   - Docker Desktop (recommended for MongoDB/Redis workflows)
+   - `direnv` (recommended for loading local secrets)
+4. Create a virtual environment: `python -m venv .venv && source .venv/bin/activate`
+5. Install dependencies: `task setup`
+6. Configure runtime environment:
+   - OpenAI path: set `NORTHHARBOR_OPENAPI_KEY` (for `LLM_PROVIDER=openai`)
+   - Ollama path: run local Ollama and set `LLM_PROVIDER=ollama`
+7. Validate environment wiring: `task env:check`
 
 ## Development Workflow
 
@@ -22,13 +36,13 @@ Thank you for your interest in contributing to NorthHarbor AI!
 
 ```bash
 # Backend
-cd backend
-uvicorn main:app --reload
+task dev:backend
 
 # Frontend
-cd frontend
-npm run dev
+task dev:frontend
 ```
+
+For all common operations, prefer `task` commands over ad-hoc shell commands.
 
 ## Code Style
 
@@ -46,11 +60,17 @@ npm run dev
 ## Running Tests
 
 ```bash
-# Backend tests
-pytest
+task test
+```
 
-# Frontend tests
-cd frontend && npm test
+Additional useful commands:
+
+```bash
+task lint
+task format
+task db:up
+task db:down
+task interview:smoke
 ```
 
 ## Commit Messages
@@ -69,10 +89,11 @@ Example: `feat: add Monte Carlo simulation visualization`
 
 1. Ensure all tests pass
 2. Update documentation if needed
-3. Fill out the PR template
-4. Request review from a maintainer
-5. Address review feedback
-6. Squash commits on merge
+3. Update `Taskfile.yml` when operating procedures or recurring workflows change
+4. Fill out the PR template
+5. Request review from a maintainer
+6. Address review feedback
+7. Squash commits on merge
 
 ## Reporting Issues
 

@@ -50,3 +50,11 @@ chore: update dependencies
 - Run linters after changes
 - Update CHANGELOG.md for user-facing changes
 - Add design doc for architectural changes
+
+## Taskfile-First Operations
+
+- Prefer `task <name>` for common developer/operator workflows instead of ad-hoc shell commands
+- Use `Taskfile.yml` as the source of truth for routine operations (setup, dev servers, lint, test, health checks, db lifecycle)
+- When operational procedures change in docs/runbooks (README, CONTRIBUTING, `docs/admin/`), update `Taskfile.yml` in the same change
+- If a repeated operation is not yet in `Taskfile.yml`, add a task before documenting or automating that workflow elsewhere
+- Validate task changes with `task --list` and ensure task descriptions are clear and actionable

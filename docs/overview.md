@@ -26,15 +26,12 @@ Structured client documents (statements, tax forms) can be ingested, mapped to t
 ## Target Users
 
 - **Individuals** planning for retirement
-- **Financial advisors** assisting clients
-- **HR departments** offering retirement planning benefits
 
 ## Use Cases
 
 1. **Self-Service Planning** — Individuals work through the guided interview independently
-2. **Advisor-Assisted Planning** — Advisors use the tool with clients for structured conversations
-3. **Scenario Comparison** — Users explore "what-if" scenarios with different assumptions
-4. **Document Generation** — Produce professional deliverables for client records
+2. **Scenario Comparison** — Users explore "what-if" scenarios with different assumptions
+3. **Document Generation** — Produce professional deliverables for client records
 
 ## Technology Stack
 

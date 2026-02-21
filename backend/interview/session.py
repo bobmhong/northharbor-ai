@@ -16,7 +16,7 @@ from backend.ai.extractor import LLMClient, StubLLMClient, extract_and_apply
 from backend.interview.questions import completion_message, welcome_message
 from backend.policy.engine import PolicyDecision, select_next_question
 from backend.schema.canonical import CanonicalPlanSchema
-from backend.schema.patch_ops import PatchResult
+from backend.schema.patch_ops import PatchResult, apply_patches
 from backend.schema.provenance import ProvenanceField
 
 
@@ -53,11 +53,13 @@ class InterviewSession:
         schema: CanonicalPlanSchema,
         *,
         llm: LLMClient | None = None,
+        model: str = "gpt-4o-mini",
         session_id: str | None = None,
     ) -> None:
         self.session_id = session_id or str(uuid.uuid4())
         self.schema = schema
         self.llm = llm or StubLLMClient()
+        self.model = model
         self.history: list[InterviewMessage] = []
         self.created_at = datetime.now(timezone.utc)
 
@@ -89,12 +91,18 @@ class InterviewSession:
             InterviewMessage(role="user", content=user_message)
         )
 
-        updated_schema, patch_result, decision = await extract_and_apply(
-            user_message,
-            self.schema,
-            self.conversation_history,
-            llm=self.llm,
-        )
+        try:
+            updated_schema, patch_result, decision = await extract_and_apply(
+                user_message,
+                self.schema,
+                self.conversation_history,
+                llm=self.llm,
+                model=self.model,
+            )
+        except Exception:
+            # Keep interview flow alive even if the model backend times out or fails.
+            updated_schema, patch_result = apply_patches(self.schema, [])
+            decision = select_next_question(updated_schema)
         self.schema = updated_schema
 
         if decision.interview_complete:

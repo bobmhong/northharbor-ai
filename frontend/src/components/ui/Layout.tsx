@@ -1,5 +1,6 @@
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { cn } from "../../lib/utils";
+import logoSingleLine from "../../../../logo-single-line.jpeg";
 
 const NAV_ITEMS = [
   { path: "/plans", label: "Plans" },
@@ -14,12 +15,11 @@ export default function Layout() {
       <header className="border-b border-gray-200 bg-white">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link to="/" className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-harbor-600 text-sm font-bold text-white">
-              NH
-            </div>
-            <span className="text-lg font-semibold text-gray-900">
-              North Harbor
-            </span>
+            <img
+              src={logoSingleLine}
+              alt="NorthHarbor Sage"
+              className="h-8 w-auto"
+            />
           </Link>
 
           <nav className="flex gap-1">

@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.ai.extractor import LLMClient, StubLLMClient
+from backend.ai.extractor import (
+    LLMClient,
+    OllamaLLMClient,
+    OpenAILLMClient,
+    StubLLMClient,
+)
 from backend.config import Settings, get_settings
 from backend.interview.session import InterviewSession
 from backend.schema.canonical import CanonicalPlanSchema
@@ -27,7 +32,21 @@ def get_snapshot_store() -> MemorySnapshotStore:
 def get_llm_client() -> LLMClient:
     global _llm
     if _llm is None:
-        _llm = StubLLMClient()
+        settings = get_settings()
+        provider = settings.llm_provider.strip().lower()
+        if provider == "ollama":
+            _llm = OllamaLLMClient(
+                base_url=settings.ollama_base_url,
+                timeout_seconds=settings.ollama_timeout_seconds,
+            )
+        elif provider == "openai" and settings.openai_api_key.strip():
+            _llm = OpenAILLMClient(
+                api_key=settings.openai_api_key,
+                base_url=settings.openai_base_url,
+                timeout_seconds=settings.openai_timeout_seconds,
+            )
+        else:
+            _llm = StubLLMClient()
     return _llm
 
 

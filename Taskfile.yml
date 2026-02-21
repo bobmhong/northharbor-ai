@@ -1,0 +1,155 @@
+version: "3"
+
+dotenv:
+  - ".env"
+
+vars:
+  PYTHON: python3
+  PIP: python3 -m pip
+  BACKEND_HOST: 0.0.0.0
+  BACKEND_PORT: "8000"
+  FRONTEND_PORT: "5173"
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  setup:
+    desc: Install all backend and frontend dependencies
+    deps: [setup:backend, setup:frontend]
+
+  setup:backend:
+    desc: Install backend Python dependencies
+    cmds:
+      - "{{.PIP}} install -r backend/requirements.txt"
+
+  setup:frontend:
+    desc: Install frontend npm dependencies
+    dir: frontend
+    cmds:
+      - npm install
+
+  dev:backend:
+    desc: Run backend API locally with auto-reload
+    cmds:
+      - "{{.PYTHON}} -m uvicorn backend.main:app --reload --host {{.BACKEND_HOST}} --port {{.BACKEND_PORT}}"
+
+  dev:frontend:
+    desc: Run frontend Vite dev server
+    dir: frontend
+    cmds:
+      - npm run dev -- --port {{.FRONTEND_PORT}}
+
+  dev:
+    desc: Run backend and frontend dev servers together
+    deps: [dev:backend, dev:frontend]
+
+  test:
+    desc: Run all tests (backend + frontend if configured)
+    deps: [test:backend, test:frontend]
+
+  test:backend:
+    desc: Run backend pytest suite
+    cmds:
+      - "{{.PYTHON}} -m pytest backend/tests"
+
+  test:frontend:
+    desc: Run frontend test script when available
+    dir: frontend
+    cmds:
+      - |
+        if npm run | rg -q " test"; then
+          npm test
+        else
+          echo "No frontend test script defined. Skipping."
+        fi
+
+  lint:
+    desc: Run backend and frontend linters
+    deps: [lint:backend, lint:frontend]
+
+  lint:backend:
+    desc: Run backend ruff checks (if installed)
+    cmds:
+      - |
+        if command -v ruff >/dev/null 2>&1; then
+          ruff check backend
+        else
+          echo "ruff not installed. Install it with: {{.PIP}} install ruff"
+          exit 1
+        fi
+
+  lint:frontend:
+    desc: Run frontend ESLint
+    dir: frontend
+    cmds:
+      - npm run lint
+
+  format:
+    desc: Format backend code with ruff (if installed)
+    cmds:
+      - |
+        if command -v ruff >/dev/null 2>&1; then
+          ruff format backend
+        else
+          echo "ruff not installed. Install it with: {{.PIP}} install ruff"
+          exit 1
+        fi
+
+  db:up:
+    desc: Start local MongoDB and Redis services
+    cmds:
+      - docker compose up -d mongodb redis
+
+  db:down:
+    desc: Stop local MongoDB and Redis services
+    cmds:
+      - docker compose down
+
+  db:logs:
+    desc: Tail MongoDB and Redis logs
+    cmds:
+      - docker compose logs -f mongodb redis
+
+  health:
+    desc: Check backend API health endpoint
+    cmds:
+      - curl -fsS "http://localhost:{{.BACKEND_PORT}}/api/health"
+
+  interview:smoke:
+    desc: Start interview and send one response to validate extraction
+    cmds:
+      - |
+        {{.PYTHON}} - <<'PY'
+        import requests
+        base = "http://localhost:{{.BACKEND_PORT}}/api/interview"
+        start = requests.post(f"{base}/start", json={"owner_id": "anonymous"}, timeout=20)
+        start.raise_for_status()
+        session_id = start.json()["session_id"]
+        turn = requests.post(
+            f"{base}/respond",
+            json={"session_id": session_id, "message": "My name is Test User"},
+            timeout=60,
+        )
+        turn.raise_for_status()
+        print(turn.json())
+        PY
+
+  env:check:
+    desc: Verify key runtime environment variables are available
+    cmds:
+      - |
+        {{.PYTHON}} - <<'PY'
+        import os
+        keys = [
+            "LLM_PROVIDER",
+            "LLM_MODEL",
+            "NORTHHARBOR_OPENAPI_KEY",
+            "MONGODB_URI",
+        ]
+        for k in keys:
+            v = os.getenv(k, "")
+            print(f"{k}: {'set' if bool(v) else 'missing'}")
+        PY

@@ -5,6 +5,8 @@ import ChatMessage from "../components/interview/ChatMessage";
 import { useInterviewStore } from "../stores/interviewStore";
 import { api } from "../api/client";
 
+let startInterviewInFlight: Promise<void> | null = null;
+
 export default function InterviewPage() {
   const navigate = useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -22,16 +24,19 @@ export default function InterviewPage() {
   } = useInterviewStore();
 
   useEffect(() => {
-    if (!sessionId) {
-      startNewInterview();
+    if (sessionId || startInterviewInFlight) {
+      return;
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    startInterviewInFlight = startNewInterview().finally(() => {
+      startInterviewInFlight = null;
+    });
+  }, [sessionId]);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  async function startNewInterview() {
+  async function startNewInterview(): Promise<void> {
     reset();
     setLoading(true);
     try {

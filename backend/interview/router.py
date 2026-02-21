@@ -16,6 +16,7 @@ from backend.api.deps import (
     store_plan,
     store_session,
 )
+from backend.config import get_settings
 from backend.interview.session import InterviewSession
 from backend.schema.canonical import (
     AccountsProfile,
@@ -106,7 +107,12 @@ async def start_interview(req: StartInterviewRequest) -> StartInterviewResponse:
 
     store_plan(schema)
 
-    session = InterviewSession(schema, llm=get_llm_client())
+    settings = get_settings()
+    session = InterviewSession(
+        schema,
+        llm=get_llm_client(),
+        model=settings.llm_model,
+    )
     turn = session.start()
     store_session(session)
 
