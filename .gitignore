@@ -36,3 +36,6 @@ htmlcov/
 # Generated artifacts
 *.pdf
 *.xlsx
+
+# pip install artifacts
+=*
