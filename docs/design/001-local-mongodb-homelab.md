@@ -151,6 +151,7 @@ Rejected because it increases local setup complexity and slows tests that do not
 
 ## References
 
+- [Design 002: Provider-Agnostic Auth with Cloudflare Access Option](002-provider-agnostic-auth-with-cloudflare-access.md)
 - Existing Mongo stores: `backend/stores/mongodb.py`
 - Existing config: `backend/config.py`
 - Existing API dependencies: `backend/api/deps.py`
