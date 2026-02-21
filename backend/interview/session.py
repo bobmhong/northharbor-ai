@@ -6,6 +6,7 @@ extraction and policy decisions to the AI extractor and policy engine.
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -16,7 +17,7 @@ from backend.ai.extractor import LLMClient, StubLLMClient, extract_and_apply
 from backend.interview.questions import completion_message, welcome_message
 from backend.policy.engine import PolicyDecision, select_next_question
 from backend.schema.canonical import CanonicalPlanSchema
-from backend.schema.patch_ops import PatchResult, apply_patches
+from backend.schema.patch_ops import PatchOp, PatchResult, apply_patches
 from backend.schema.provenance import ProvenanceField
 
 
@@ -37,6 +38,326 @@ class InterviewTurnResult(BaseModel):
     patch_result: PatchResult | None = None
     policy_decision: PolicyDecision
     interview_complete: bool = False
+
+
+_NAME_PREFIX_RE = re.compile(r"^(?:my name is|i am|i'm)\s+", flags=re.IGNORECASE)
+_NAME_TOKEN_RE = re.compile(r"^[A-Za-z][A-Za-z'-]*$")
+_BIRTH_YEAR_RE = re.compile(r"\b(19\d{2}|20\d{2})\b")
+_WORD_TEXT_RE = re.compile(r"^[A-Za-z][A-Za-z .'-]{1,49}$")
+_NUMBER_RE = re.compile(r"[-+]?\d+(?:,\d{3})*(?:\.\d+)?")
+_RANGE_RE = re.compile(r"(\d{2})\D+(\d{2})")
+_AFFIRMATIVE_REPLIES = {"y", "yes", "yeah", "yep", "correct", "right", "that is right"}
+
+
+def _extract_full_name_fallback(user_message: str) -> str | None:
+    """Best-effort fallback for obvious full-name replies.
+
+    This only handles clear two-to-four token names and avoids numeric or
+    punctuation-heavy messages.
+    """
+    normalized = " ".join(user_message.strip().split())
+    if not normalized:
+        return None
+
+    normalized = _NAME_PREFIX_RE.sub("", normalized).strip(" .,!?:;")
+    if not normalized:
+        return None
+    if any(ch.isdigit() for ch in normalized):
+        return None
+
+    parts = normalized.split(" ")
+    if len(parts) < 2 or len(parts) > 4:
+        return None
+    if not all(_NAME_TOKEN_RE.match(part) for part in parts):
+        return None
+
+    return " ".join(part.capitalize() for part in parts)
+
+
+def _extract_birth_year_fallback(user_message: str) -> int | None:
+    """Extract a likely birth year from free text when clearly provided."""
+    match = _BIRTH_YEAR_RE.search(user_message)
+    if not match:
+        return None
+
+    year = int(match.group(1))
+    current_year = datetime.now(timezone.utc).year
+    if year < 1900 or year > current_year:
+        return None
+    return year
+
+
+def _merge_patch_results(
+    primary: PatchResult, secondary: PatchResult
+) -> PatchResult:
+    return PatchResult(
+        applied=[*primary.applied, *secondary.applied],
+        rejected=[*primary.rejected, *secondary.rejected],
+        schema_snapshot_id=secondary.schema_snapshot_id,
+        warnings=[*primary.warnings, *secondary.warnings],
+    )
+
+
+def _parse_number(user_message: str) -> float | None:
+    match = _NUMBER_RE.search(user_message.replace("$", ""))
+    if not match:
+        return None
+    return float(match.group(0).replace(",", ""))
+
+
+def _parse_money(user_message: str) -> float | None:
+    amount = _parse_number(user_message)
+    if amount is None or amount < 0:
+        return None
+    return amount
+
+
+def _parse_percent_as_ratio(user_message: str) -> float | None:
+    value = _parse_number(user_message)
+    if value is None:
+        return None
+    if "%" in user_message or value > 1.0:
+        if value > 100:
+            return None
+        return value / 100.0
+    if 0 <= value <= 1:
+        return value
+    return None
+
+
+def _parse_word_text(user_message: str) -> str | None:
+    normalized = " ".join(user_message.strip().split())
+    if not normalized:
+        return None
+    if not _WORD_TEXT_RE.match(normalized):
+        return None
+    return normalized
+
+
+def _parse_retirement_window(user_message: str) -> dict[str, float] | None:
+    msg = user_message.strip()
+    match = _RANGE_RE.search(msg)
+    if match:
+        lo = int(match.group(1))
+        hi = int(match.group(2))
+        if 40 <= lo <= 80 and 40 <= hi <= 80 and lo <= hi:
+            return {"min": float(lo), "max": float(hi)}
+        return None
+    single = _parse_number(msg)
+    if single is None:
+        return None
+    age = int(single)
+    if 40 <= age <= 80:
+        return {"min": float(age), "max": float(age)}
+    return None
+
+
+def _fallback_patch_for_target(
+    target_field: str | None, user_message: str
+) -> PatchOp | None:
+    if target_field == "client.name":
+        fallback_name = _extract_full_name_fallback(user_message)
+        if fallback_name:
+            return PatchOp(
+                op="set",
+                path="client.name",
+                value=fallback_name,
+                confidence=0.75,
+            )
+        return None
+
+    if target_field == "client.birth_year":
+        fallback_birth_year = _extract_birth_year_fallback(user_message)
+        if fallback_birth_year is not None:
+            return PatchOp(
+                op="set",
+                path="client.birth_year",
+                value=fallback_birth_year,
+                confidence=0.85,
+            )
+        return None
+
+    if target_field in {"location.state", "location.city", "accounts.investment_strategy_id"}:
+        text = _parse_word_text(user_message)
+        if text:
+            return PatchOp(op="set", path=target_field, value=text, confidence=0.8)
+        return None
+
+    if target_field == "housing.status":
+        normalized = user_message.strip().lower()
+        if normalized in {"rent", "renter", "renting"}:
+            return PatchOp(op="set", path=target_field, value="rent", confidence=0.9)
+        if normalized in {"own", "owner", "owning"}:
+            return PatchOp(op="set", path=target_field, value="own", confidence=0.9)
+        return None
+
+    if target_field == "client.retirement_window":
+        window = _parse_retirement_window(user_message)
+        if window:
+            return PatchOp(op="set", path=target_field, value=window, confidence=0.85)
+        return None
+
+    if target_field in {
+        "income.current_gross_annual",
+        "retirement_philosophy.legacy_goal_total_real",
+        "accounts.retirement_balance",
+        "spending.retirement_monthly_real",
+        "social_security.combined_at_67_monthly",
+        "social_security.combined_at_70_monthly",
+        "monte_carlo.legacy_floor",
+    }:
+        amount = _parse_money(user_message)
+        if amount is not None:
+            return PatchOp(op="set", path=target_field, value=amount, confidence=0.85)
+        return None
+
+    if target_field in {
+        "retirement_philosophy.success_probability_target",
+        "monte_carlo.required_success_rate",
+        "accounts.savings_rate_percent",
+    }:
+        ratio = _parse_percent_as_ratio(user_message)
+        if ratio is not None:
+            return PatchOp(op="set", path=target_field, value=ratio, confidence=0.85)
+        return None
+
+    if target_field in {"monte_carlo.horizon_age", "social_security.claiming_preference"}:
+        number = _parse_number(user_message)
+        if number is None:
+            return None
+        ivalue = int(number)
+        if target_field == "social_security.claiming_preference" and not (62 <= ivalue <= 70):
+            return None
+        if target_field == "monte_carlo.horizon_age" and not (80 <= ivalue <= 120):
+            return None
+        return PatchOp(op="set", path=target_field, value=ivalue, confidence=0.85)
+
+    return None
+
+
+def _invalid_input_feedback(
+    target_field: str | None, user_message: str
+) -> str | None:
+    text = user_message.strip()
+    if not target_field or not text:
+        return None
+
+    if target_field == "client.name":
+        if len(text.split()) < 2:
+            return (
+                "Thanks — I need your full name (first and last) so I can match records "
+                "correctly. For example: \"Bob Jones.\""
+            )
+        return "I couldn't quite read that as a full name. Please share first and last name."
+
+    if target_field == "client.birth_year":
+        return (
+            "I need a 4-digit birth year so I can calculate age-based projections. "
+            "For example: \"1982.\""
+        )
+
+    if target_field in {
+        "income.current_gross_annual",
+        "retirement_philosophy.legacy_goal_total_real",
+        "accounts.retirement_balance",
+        "spending.retirement_monthly_real",
+        "social_security.combined_at_67_monthly",
+        "social_security.combined_at_70_monthly",
+        "monte_carlo.legacy_floor",
+    }:
+        return (
+            "I need a numeric amount for that field. You can enter values like "
+            "\"185000\" or \"$185,000.\""
+        )
+
+    if target_field in {
+        "retirement_philosophy.success_probability_target",
+        "monte_carlo.required_success_rate",
+        "accounts.savings_rate_percent",
+    }:
+        return (
+            "I need a percentage for that value. You can reply with something like "
+            "\"15%\" or \"0.15.\""
+        )
+
+    if target_field == "client.retirement_window":
+        return (
+            "I need a retirement age or range, like \"65\" or \"65 to 67.\""
+        )
+
+    if target_field in {"location.state", "location.city"}:
+        return "I need a place name there (for example, \"Washington\" or \"Seattle\")."
+
+    if target_field == "housing.status":
+        return "Please answer with \"rent\" or \"own.\""
+
+    if target_field == "accounts.investment_strategy_id":
+        return (
+            "Please share a strategy label like \"conservative,\" \"moderate,\" "
+            "or \"aggressive.\""
+        )
+
+    if target_field == "social_security.claiming_preference":
+        return "Please provide a claiming age between 62 and 70 (for example, \"67\")."
+
+    if target_field == "monte_carlo.horizon_age":
+        return "Please provide an age for the projection horizon, usually between 80 and 120."
+
+    return None
+
+
+def _client_friendly_ack(
+    applied_paths: list[str], schema: CanonicalPlanSchema
+) -> str:
+    if not applied_paths:
+        return "Thanks for that."
+
+    if "client.name" in applied_paths:
+        name_value = _resolve_path_value(schema, "client.name")
+        if isinstance(name_value, str) and name_value.strip():
+            return f"Hi {name_value}, nice to meet you."
+        return "Nice to meet you."
+
+    if "client.birth_year" in applied_paths:
+        return "Great, thanks for sharing your birth year."
+    if "location.state" in applied_paths or "location.city" in applied_paths:
+        return "Perfect, thanks for sharing your location."
+    if "income.current_gross_annual" in applied_paths:
+        return "Thanks, I have your income."
+    if "accounts.retirement_balance" in applied_paths:
+        return "Great, I have your retirement balance."
+    if "accounts.savings_rate_percent" in applied_paths:
+        return "Great, I have your savings rate."
+    if "spending.retirement_monthly_real" in applied_paths:
+        return "Thanks, I have your retirement spending target."
+    if (
+        "social_security.combined_at_67_monthly" in applied_paths
+        or "social_security.combined_at_70_monthly" in applied_paths
+    ):
+        return "Great, I have your Social Security estimate."
+
+    return "Thanks — got it."
+
+
+def _resolve_path_value(schema: CanonicalPlanSchema, path: str) -> Any:
+    current: Any = schema
+    for seg in path.split("."):
+        if hasattr(current, seg):
+            current = getattr(current, seg)
+        elif isinstance(current, dict):
+            current = current.get(seg)
+        else:
+            return None
+        if current is None:
+            return None
+    if isinstance(current, ProvenanceField):
+        return current.value
+    return current
+
+
+def _is_affirmative(message: str) -> bool:
+    normalized = " ".join(message.strip().lower().split())
+    return normalized in _AFFIRMATIVE_REPLIES
 
 
 class InterviewSession:
@@ -103,22 +424,48 @@ class InterviewSession:
             # Keep interview flow alive even if the model backend times out or fails.
             updated_schema, patch_result = apply_patches(self.schema, [])
             decision = select_next_question(updated_schema)
+
+        if not patch_result.applied:
+            fallback_patch = _fallback_patch_for_target(decision.target_field, user_message)
+            if fallback_patch is None and decision.target_field and _is_affirmative(user_message):
+                existing_value = _resolve_path_value(updated_schema, decision.target_field)
+                if existing_value is not None:
+                    fallback_patch = PatchOp(
+                        op="set",
+                        path=decision.target_field,
+                        value=existing_value,
+                        confidence=1.0,
+                    )
+            if fallback_patch is not None:
+                updated_schema, fallback_result = apply_patches(updated_schema, [fallback_patch])
+                patch_result = _merge_patch_results(patch_result, fallback_result)
+                decision = select_next_question(updated_schema)
         self.schema = updated_schema
 
         if decision.interview_complete:
             reply = completion_message()
         elif patch_result.applied:
-            applied_fields = ", ".join(p.path for p in patch_result.applied)
-            reply = f"Got it, I've recorded {applied_fields}."
+            applied_paths = [p.path for p in patch_result.applied]
+            reply = _client_friendly_ack(applied_paths, updated_schema)
             if decision.next_question:
                 reply += f"\n\n{decision.next_question}"
         elif patch_result.rejected:
-            reasons = "; ".join(r for _, r in patch_result.rejected)
-            reply = f"I had trouble with that: {reasons}."
-            if decision.next_question:
-                reply += f"\n\nLet's try again: {decision.next_question}"
+            feedback = _invalid_input_feedback(decision.target_field, user_message)
+            if feedback and decision.next_question:
+                reply = f"{feedback}\n\n{decision.next_question}"
+            elif decision.next_question:
+                reply = (
+                    "Thanks — I couldn't use that answer yet. "
+                    f"{decision.next_question}"
+                )
+            else:
+                reply = "Thanks — I couldn't use that answer yet. Could you tell me a bit more?"
         else:
-            reply = decision.next_question or "Could you tell me more?"
+            feedback = _invalid_input_feedback(decision.target_field, user_message)
+            if feedback and decision.next_question:
+                reply = f"{feedback}\n\n{decision.next_question}"
+            else:
+                reply = decision.next_question or "Could you tell me more?"
 
         self.history.append(
             InterviewMessage(role="assistant", content=reply)

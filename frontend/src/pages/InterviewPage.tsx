@@ -53,20 +53,59 @@ export default function InterviewPage() {
 
   const handleSend = useCallback(
     async (message: string) => {
-      if (!sessionId) return;
       addMessage("user", message);
       setLoading(true);
       try {
-        const res = await api.respond(sessionId, message);
+        let activeSessionId = sessionId;
+        if (!activeSessionId) {
+          addMessage(
+            "assistant",
+            "I need to start a new interview session first. One moment...",
+          );
+          const start = await api.startInterview();
+          setSession(start.session_id, start.plan_id);
+          addMessage("assistant", start.message);
+          if (start.interview_complete) {
+            setComplete(true);
+          }
+          activeSessionId = start.session_id;
+        }
+
+        const res = await api.respond(activeSessionId, message);
         addMessage("assistant", res.message);
         if (res.interview_complete) setComplete(true);
       } catch (err) {
-        addMessage("assistant", "Something went wrong. Please try again.");
+        const errorMessage = err instanceof Error ? err.message : "";
+        if (errorMessage.toLowerCase().includes("session not found")) {
+          addMessage(
+            "assistant",
+            "Your interview session expired after a backend reload. Starting a new session now...",
+          );
+          try {
+            const start = await api.startInterview();
+            setSession(start.session_id, start.plan_id);
+            addMessage("assistant", start.message);
+            const retry = await api.respond(start.session_id, message);
+            addMessage("assistant", retry.message);
+            if (retry.interview_complete) setComplete(true);
+            return;
+          } catch {
+            addMessage(
+              "assistant",
+              "I couldn't recover your session automatically. Please refresh and try again.",
+            );
+            return;
+          }
+        }
+        addMessage(
+          "assistant",
+          "Something went wrong while sending your answer. Please try again.",
+        );
       } finally {
         setLoading(false);
       }
     },
-    [sessionId, addMessage, setLoading, setComplete],
+    [sessionId, addMessage, setSession, setLoading, setComplete],
   );
 
   return (

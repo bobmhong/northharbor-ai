@@ -9,6 +9,11 @@ vars:
   BACKEND_HOST: 0.0.0.0
   BACKEND_PORT: "8000"
   FRONTEND_PORT: "5173"
+  DEV_STATE_DIR: .task/dev
+  BACKEND_PID_FILE: "{{.DEV_STATE_DIR}}/backend.pid"
+  FRONTEND_PID_FILE: "{{.DEV_STATE_DIR}}/frontend.pid"
+  BACKEND_LOG_FILE: "{{.DEV_STATE_DIR}}/backend.log"
+  FRONTEND_LOG_FILE: "{{.DEV_STATE_DIR}}/frontend.log"
 
 tasks:
   default:
@@ -45,6 +50,226 @@ tasks:
   dev:
     desc: Run backend and frontend dev servers together
     deps: [dev:backend, dev:frontend]
+
+  dev:up:
+    desc: Start backend and frontend dev servers in background
+    cmds:
+      - |
+        mkdir -p "{{.DEV_STATE_DIR}}"
+
+        backend_running=0
+        frontend_running=0
+
+        if [ -f "{{.BACKEND_PID_FILE}}" ]; then
+          backend_pid="$(cat "{{.BACKEND_PID_FILE}}")"
+          if [ -n "$backend_pid" ] && /bin/kill -0 "$backend_pid" >/dev/null 2>&1; then
+            backend_running=1
+          else
+            rm -f "{{.BACKEND_PID_FILE}}"
+          fi
+        fi
+
+        if [ -f "{{.FRONTEND_PID_FILE}}" ]; then
+          frontend_pid="$(cat "{{.FRONTEND_PID_FILE}}")"
+          if [ -n "$frontend_pid" ] && /bin/kill -0 "$frontend_pid" >/dev/null 2>&1; then
+            frontend_running=1
+          else
+            rm -f "{{.FRONTEND_PID_FILE}}"
+          fi
+        fi
+
+        if lsof -t -iTCP:{{.BACKEND_PORT}} -sTCP:LISTEN >/dev/null 2>&1; then
+          backend_running=1
+        fi
+        if lsof -t -iTCP:{{.FRONTEND_PORT}} -sTCP:LISTEN >/dev/null 2>&1; then
+          frontend_running=1
+        fi
+
+        if [ "$backend_running" -eq 1 ] || [ "$frontend_running" -eq 1 ]; then
+          echo "Warning: dev environment appears to already be running."
+          printf "Do you want to restart it? [y/N] "
+          read -r restart_answer
+          case "$restart_answer" in
+            y|Y|yes|YES)
+              task dev:down
+              ;;
+            *)
+              echo "Keeping existing dev environment."
+              exit 0
+              ;;
+          esac
+        fi
+
+        "{{.PYTHON}}" - <<'PY'
+        import subprocess
+        from pathlib import Path
+
+        root = Path("{{.TASKFILE_DIR}}")
+        state = root / "{{.DEV_STATE_DIR}}"
+        state.mkdir(parents=True, exist_ok=True)
+
+        backend_log = open(root / "{{.BACKEND_LOG_FILE}}", "ab", buffering=0)
+        frontend_log = open(root / "{{.FRONTEND_LOG_FILE}}", "ab", buffering=0)
+
+        backend = subprocess.Popen(
+            [
+                "{{.PYTHON}}",
+                "-m",
+                "uvicorn",
+                "backend.main:app",
+                "--reload",
+                "--host",
+                "{{.BACKEND_HOST}}",
+                "--port",
+                "{{.BACKEND_PORT}}",
+            ],
+            cwd=root,
+            stdout=backend_log,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        frontend = subprocess.Popen(
+            ["npm", "run", "dev", "--", "--port", "{{.FRONTEND_PORT}}"],
+            cwd=root / "frontend",
+            stdout=frontend_log,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+
+        (root / "{{.BACKEND_PID_FILE}}").write_text(f"{backend.pid}\n", encoding="utf-8")
+        (root / "{{.FRONTEND_PID_FILE}}").write_text(f"{frontend.pid}\n", encoding="utf-8")
+        PY
+
+        backend_pid=""
+        frontend_pid=""
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+          if [ -z "$backend_pid" ]; then
+            backend_pid="$(lsof -t -iTCP:{{.BACKEND_PORT}} -sTCP:LISTEN | sed -n '1p' || true)"
+          fi
+          if [ -z "$frontend_pid" ]; then
+            frontend_pid="$(lsof -t -iTCP:{{.FRONTEND_PORT}} -sTCP:LISTEN | sed -n '1p' || true)"
+          fi
+          if [ -n "$backend_pid" ] && [ -n "$frontend_pid" ]; then
+            break
+          fi
+          sleep 1
+        done
+
+        case "$backend_pid" in
+          ''|*[!0-9]*)
+            echo "backend failed to start listening on port {{.BACKEND_PORT}}. Check {{.BACKEND_LOG_FILE}}"
+            rm -f "{{.BACKEND_PID_FILE}}"
+            exit 1
+            ;;
+        esac
+        case "$frontend_pid" in
+          ''|*[!0-9]*)
+            echo "frontend failed to start listening on port {{.FRONTEND_PORT}}. Check {{.FRONTEND_LOG_FILE}}"
+            rm -f "{{.FRONTEND_PID_FILE}}"
+            exit 1
+            ;;
+        esac
+
+        echo "$backend_pid" > "{{.BACKEND_PID_FILE}}"
+        echo "$frontend_pid" > "{{.FRONTEND_PID_FILE}}"
+
+        echo "Started backend (pid $backend_pid) and frontend (pid $frontend_pid) in background."
+        echo "Logs: {{.BACKEND_LOG_FILE}}, {{.FRONTEND_LOG_FILE}}"
+
+  dev:down:
+    desc: Stop background dev servers started by dev:up
+    cmds:
+      - |
+        stop_from_pid_file() {
+          pid_file="$1"
+          label="$2"
+          expected_one="$3"
+          expected_two="${4:-}"
+
+          if [ ! -f "$pid_file" ]; then
+            echo "$label: no pid file ($pid_file)."
+            return
+          fi
+
+          pid="$(cat "$pid_file")"
+          if [ -z "$pid" ]; then
+            echo "$label: empty pid file, removing."
+            rm -f "$pid_file"
+            return
+          fi
+
+          if ! /bin/kill -0 "$pid" >/dev/null 2>&1; then
+            echo "$label: pid $pid not running, removing stale pid file."
+            rm -f "$pid_file"
+            return
+          fi
+
+          cmd="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+          matches_expected=1
+          case "$cmd" in
+            *"$expected_one"*)
+              matches_expected=0
+              ;;
+          esac
+          if [ "$matches_expected" -ne 0 ] && [ -n "$expected_two" ]; then
+            case "$cmd" in
+              *"$expected_two"*)
+                matches_expected=0
+                ;;
+            esac
+          fi
+          if [ "$matches_expected" -ne 0 ]; then
+            echo "$label: pid $pid does not match expected command, not killing."
+            echo "$label: command was: $cmd"
+            return
+          fi
+
+          /bin/kill "$pid"
+          rm -f "$pid_file"
+          echo "$label: stopped pid $pid."
+        }
+
+        stop_from_pid_file "{{.BACKEND_PID_FILE}}" "backend" "uvicorn backend.main:app"
+        stop_from_pid_file "{{.FRONTEND_PID_FILE}}" "frontend" "vite" "npm run dev"
+
+        if lsof -t -iTCP:{{.BACKEND_PORT}} -sTCP:LISTEN >/dev/null 2>&1; then
+          echo "Warning: port {{.BACKEND_PORT}} still has a listener (possibly not started by dev:up)."
+        fi
+        if lsof -t -iTCP:{{.FRONTEND_PORT}} -sTCP:LISTEN >/dev/null 2>&1; then
+          echo "Warning: port {{.FRONTEND_PORT}} still has a listener (possibly not started by dev:up)."
+        fi
+
+  dev:status:
+    desc: Show status of background dev servers
+    cmds:
+      - |
+        print_status() {
+          pid_file="$1"
+          label="$2"
+          port="$3"
+
+          if [ -f "$pid_file" ]; then
+            pid="$(cat "$pid_file")"
+            if [ -n "$pid" ] && /bin/kill -0 "$pid" >/dev/null 2>&1; then
+              echo "$label: running (pid $pid)"
+            else
+              echo "$label: not running (stale pid file: $pid_file)"
+            fi
+          else
+            echo "$label: pid file missing ($pid_file)"
+          fi
+
+          if lsof -t -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+            listeners="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN | sed '1d')"
+            echo "$label port $port listeners:"
+            echo "$listeners"
+          else
+            echo "$label port $port: no listeners"
+          fi
+        }
+
+        print_status "{{.BACKEND_PID_FILE}}" "backend" "{{.BACKEND_PORT}}"
+        print_status "{{.FRONTEND_PID_FILE}}" "frontend" "{{.FRONTEND_PORT}}"
 
   test:
     desc: Run all tests (backend + frontend if configured)

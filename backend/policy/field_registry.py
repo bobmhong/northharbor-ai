@@ -164,17 +164,13 @@ CONFIRM_TEMPLATES: dict[str, str] = {
 }
 
 OPTIONAL_TEMPLATES: dict[str, str] = {
-    "housing.status": (
-        "Would you like to share details about your housing situation? "
-        "This helps us model costs more accurately."
-    ),
+    "housing.status": "Do you currently rent or own your home?",
     "accounts.investment_strategy_id": (
-        "Would you like to specify your investment strategy? "
-        "This helps us choose appropriate return assumptions."
+        "What investment strategy best describes your portfolio? "
+        "(e.g. conservative, moderate, aggressive)"
     ),
     "social_security.claiming_preference": (
-        "Do you have a preference for when to claim Social Security? "
-        "The age you choose significantly affects your monthly benefit."
+        "At what age do you plan to start claiming Social Security? (62–70)"
     ),
 }
 

@@ -68,6 +68,7 @@ Building core infrastructure and baseline capabilities.
 - [ ] Test coverage: 80%+ on interview, projection, and auth flows
 - [ ] Security review: OWASP Top 10 checklist pass
 - [ ] User-facing documentation (getting started guide)
+- [ ] Cross-platform operational guidance (macOS, Linux, WSL, Windows/Git Bash) for setup, dev lifecycle, and troubleshooting
 - [ ] CI/CD pipeline with staging environment
 
 ---
@@ -87,4 +88,4 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for how to get involved. For significa
 
 ---
 
-_Last updated: 2026-02-20_
+_Last updated: 2026-02-21_
