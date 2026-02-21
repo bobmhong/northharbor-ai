@@ -26,6 +26,7 @@ Thumbs.db
 # Node / Frontend
 node_modules/
 frontend/dist/
+*.tsbuildinfo
 
 # Test / Coverage
 .coverage
