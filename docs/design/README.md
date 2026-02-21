@@ -47,7 +47,8 @@ Use sequential numbering with descriptive names:
 
 | # | Title | Status | Date |
 |---|-------|--------|------|
-| — | _No designs yet_ | — | — |
+| 001 | [Local MongoDB Option for Homelab Deployments](001-local-mongodb-homelab.md) | Draft | 2026-02-20 |
+| 002 | [Provider-Agnostic Auth with Cloudflare Access Option](002-provider-agnostic-auth-with-cloudflare-access.md) | Draft | 2026-02-20 |
 
 <!-- Example:
 | 001 | [Interview Engine](001-interview-engine.md) | Implemented | 2026-02-20 |
