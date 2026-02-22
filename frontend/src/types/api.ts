@@ -21,6 +21,12 @@ export interface RespondResponse {
   rejected_fields: string[];
   interview_complete: boolean;
   missing_fields: string[];
+  warnings: Array<{
+    rule_id: string;
+    fields: string[];
+    message: string;
+    suggestion: string;
+  }>;
 }
 
 export interface PlanSummary {

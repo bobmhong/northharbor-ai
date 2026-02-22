@@ -5,6 +5,7 @@ import ChatInput, { detectEditIntent } from "../components/interview/ChatInput";
 import ChatMessage from "../components/interview/ChatMessage";
 import { useInterviewStore } from "../stores/interviewStore";
 import { api } from "../api/client";
+import WarningsPanel from "../components/interview/WarningsPanel";
 
 let startInterviewInFlight: Promise<void> | null = null;
 
@@ -99,6 +100,8 @@ function fieldLabelFromPath(fieldPath?: string | null): string | undefined {
     case "retirement_philosophy.success_probability_target":
     case "monte_carlo.required_success_rate":
       return "success rate";
+    case "additional_considerations":
+      return "additional considerations";
     default:
       return undefined;
   }
@@ -229,6 +232,7 @@ export default function InterviewPage() {
     isResumed,
     editing,
     phase,
+    warnings,
     setSession,
     addMessage,
     setMessages,
@@ -238,6 +242,7 @@ export default function InterviewPage() {
     setResumed,
     setEditing,
     setPhase,
+    setWarnings,
     reset,
   } = useInterviewStore();
 
@@ -289,6 +294,16 @@ export default function InterviewPage() {
       }
       
       if (res.interview_complete) setComplete(true);
+
+      const fieldParam = searchParams.get("field");
+      if (fieldParam === "additional_considerations" && res.interview_complete) {
+        addMessage("assistant", "You can update your additional considerations below.", {
+          fieldPath: "additional_considerations",
+        });
+        setComplete(false);
+        setPhase("interviewing");
+        setSearchParams({ plan_id: res.plan_id }, { replace: true });
+      }
     } catch (err: unknown) {
       const is404 =
         err instanceof Error &&
@@ -362,8 +377,15 @@ export default function InterviewPage() {
           activeSessionId = start.session_id;
         }
 
-        const res = await api.respond(activeSessionId, message);
+        const isStructuredMode = currentTargetField && currentTargetField !== "additional_considerations";
+        const res = await api.respond(activeSessionId, message, {
+          fieldPath: currentTargetField ?? undefined,
+          validated: !!isStructuredMode,
+        });
         addMessage("assistant", res.message, { fieldPath: res.target_field ?? undefined });
+        if (res.warnings) {
+          setWarnings(res.warnings);
+        }
         if (res.interview_complete) setComplete(true);
         
         queryClient.invalidateQueries({ queryKey: ["plan", planId || planIdParam] });
@@ -389,6 +411,9 @@ export default function InterviewPage() {
             addMessage("assistant", start.message, { fieldPath: start.target_field ?? undefined });
             const retry = await api.respond(start.session_id, message);
             addMessage("assistant", retry.message, { fieldPath: retry.target_field ?? undefined });
+            if (retry.warnings) {
+              setWarnings(retry.warnings);
+            }
             if (retry.interview_complete) setComplete(true);
             return;
           } catch {
@@ -407,7 +432,7 @@ export default function InterviewPage() {
         setLoading(false);
       }
     },
-    [sessionId, planIdParam, addMessage, setSession, setLoading, setComplete, currentTargetField],
+    [sessionId, planIdParam, addMessage, setSession, setLoading, setComplete, setWarnings, currentTargetField],
   );
 
   const handleEditMessage = useCallback(
@@ -482,6 +507,9 @@ export default function InterviewPage() {
           if (sessionId && !isComplete) {
             const res = await api.respond(sessionId, `[Updated ${fieldName}]`);
             addMessage("assistant", res.message, { fieldPath: res.target_field ?? undefined });
+            if (res.warnings) {
+              setWarnings(res.warnings);
+            }
             if (res.interview_complete) {
               setComplete(true);
               setPhase("ready_for_analysis");
@@ -497,6 +525,9 @@ export default function InterviewPage() {
         try {
           const res = await api.respond(sessionId, `[Correction] My ${fieldName} should be: ${formattedValue}`);
           addMessage("assistant", res.message, { fieldPath: res.target_field ?? undefined });
+          if (res.warnings) {
+            setWarnings(res.warnings);
+          }
           if (res.interview_complete) {
             setComplete(true);
             setPhase("ready_for_analysis");
@@ -510,7 +541,7 @@ export default function InterviewPage() {
         }
       }
     },
-    [sessionId, planId, planIdParam, queryClient, editing, messages, markMessageUpdated, addMessage, setLoading, setComplete, setEditing, setPhase, isComplete]
+    [sessionId, planId, planIdParam, queryClient, editing, messages, markMessageUpdated, addMessage, setLoading, setComplete, setEditing, setPhase, setWarnings, isComplete]
   );
 
   const handleSendWithEditDetection = useCallback(
@@ -617,10 +648,16 @@ export default function InterviewPage() {
     }
   }, [isComplete, phase, setPhase]);
 
+  const handleSkipToAnalysis = useCallback(() => {
+    setComplete(true);
+    setPhase("ready_for_analysis");
+  }, [setComplete, setPhase]);
+
   const activePlanId = planId || planIdParam;
 
   return (
     <>
+      <div className="flex flex-1 min-h-0 gap-4">
       <div className="mx-auto max-w-2xl flex-1 flex flex-col min-h-0" style={{ paddingBottom: phase === "ready_for_analysis" && !editing ? undefined : inputHeight }}>
         <div className="flex items-center justify-between gap-4 mb-4 shrink-0">
           <p className="text-sm text-sage-600">
@@ -714,6 +751,12 @@ export default function InterviewPage() {
           </div>
         )}
       </div>
+      {warnings.length > 0 && (
+        <WarningsPanel
+          warnings={warnings}
+        />
+      )}
+      </div>
 
       {showInput && (
         <>
@@ -754,6 +797,7 @@ export default function InterviewPage() {
                   editing={editing}
                   onCancelEdit={handleCancelEdit}
                   onSubmitEdit={handleSubmitEdit}
+                  onSkipToAnalysis={handleSkipToAnalysis}
                 />
               </div>
             </div>

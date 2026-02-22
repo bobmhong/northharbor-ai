@@ -33,10 +33,15 @@ export const api = {
     });
   },
 
-  respond(sessionId: string, message: string) {
+  respond(sessionId: string, message: string, opts?: { fieldPath?: string; validated?: boolean }) {
     return request<RespondResponse>("/interview/respond", {
       method: "POST",
-      body: JSON.stringify({ session_id: sessionId, message }),
+      body: JSON.stringify({
+        session_id: sessionId,
+        message,
+        field_path: opts?.fieldPath ?? null,
+        validated: opts?.validated ?? false,
+      }),
     });
   },
 

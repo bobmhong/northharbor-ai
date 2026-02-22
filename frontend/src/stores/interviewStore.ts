@@ -31,6 +31,12 @@ interface InterviewState {
   isResumed: boolean;
   editing: EditingState | null;
   phase: InterviewPhase;
+  warnings: Array<{
+    rule_id: string;
+    fields: string[];
+    message: string;
+    suggestion: string;
+  }>;
 
   setSession: (sessionId: string, planId: string) => void;
   addMessage: (role: "user" | "assistant", content: string, extra?: Partial<Message>) => void;
@@ -42,6 +48,7 @@ interface InterviewState {
   setResumed: (resumed: boolean) => void;
   setEditing: (editing: EditingState | null) => void;
   setPhase: (phase: InterviewPhase) => void;
+  setWarnings: (warnings: Array<{ rule_id: string; fields: string[]; message: string; suggestion: string }>) => void;
   reset: () => void;
 }
 
@@ -54,6 +61,7 @@ export const useInterviewStore = create<InterviewState>((set) => ({
   isResumed: false,
   editing: null,
   phase: "interviewing",
+  warnings: [],
 
   setSession: (sessionId, planId) => set({ sessionId, planId }),
 
@@ -86,6 +94,7 @@ export const useInterviewStore = create<InterviewState>((set) => ({
   setResumed: (isResumed) => set({ isResumed }),
   setEditing: (editing) => set({ editing }),
   setPhase: (phase) => set({ phase }),
+  setWarnings: (warnings) => set({ warnings }),
 
   reset: () =>
     set({
@@ -97,5 +106,6 @@ export const useInterviewStore = create<InterviewState>((set) => ({
       isResumed: false,
       editing: null,
       phase: "interviewing",
+      warnings: [],
     }),
 }));

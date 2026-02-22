@@ -1,8 +1,9 @@
 import { useRef, useState, useEffect, type FormEvent, useMemo } from "react";
 import Typeahead from "../ui/Typeahead";
 import { getStatesForAutocomplete, getCitiesForState } from "../../data/locations";
+import { validateField } from "../../utils/fieldValidation";
 
-type InputMode = "text" | "state" | "city" | "income" | "legacy" | "balance" | "spending" | "percentage" | "success_rate" | "claiming_age" | "employer_plan" | "employer_match" | "employee_contribution" | "ss_benefit" | "retirement_age";
+type InputMode = "text" | "open_text" | "state" | "city" | "income" | "legacy" | "balance" | "spending" | "percentage" | "success_rate" | "claiming_age" | "employer_plan" | "employer_match" | "employee_contribution" | "ss_benefit" | "retirement_age";
 
 const INCOME_SUGGESTIONS = [
   { value: "25000", label: "$25,000" },
@@ -181,6 +182,7 @@ interface ChatInputProps {
   editing?: EditingState | null;
   onCancelEdit?: () => void;
   onSubmitEdit?: (index: number, newContent: string) => void;
+  onSkipToAnalysis?: () => void;
 }
 
 function detectInputMode(message?: string, context?: string, targetField?: string): { mode: InputMode; stateContext?: string } {
@@ -216,6 +218,8 @@ function detectInputMode(message?: string, context?: string, targetField?: strin
       return { mode: "employee_contribution" };
     case "accounts.savings_rate_percent":
       return { mode: "percentage" };
+    case "additional_considerations":
+      return { mode: "open_text" };
     default:
       break;
   }
@@ -366,8 +370,10 @@ export default function ChatInput({
   editing,
   onCancelEdit,
   onSubmitEdit,
+  onSkipToAnalysis,
 }: ChatInputProps) {
   const [value, setValue] = useState("");
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [retireAgeMin, setRetireAgeMin] = useState(65);
   const [retireAgeMax, setRetireAgeMax] = useState(67);
   const [claimTipOpen, setClaimTipOpen] = useState(false);
@@ -517,6 +523,10 @@ export default function ChatInput({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [editing, onCancelEdit]);
 
+  useEffect(() => {
+    if (validationError) setValidationError(null);
+  }, [value]);
+
   // Handle Enter key to submit default values for slider/button modes
   useEffect(() => {
     // Only handle for modes that don't have a standard form submit
@@ -578,6 +588,15 @@ export default function ChatInput({
     e.preventDefault();
     const trimmed = value.trim();
     if (!trimmed || disabled) return;
+
+    if (currentTargetField && mode !== "open_text") {
+      const result = validateField(currentTargetField, trimmed);
+      if (!result.valid) {
+        setValidationError(result.error ?? "Invalid input");
+        return;
+      }
+      setValidationError(null);
+    }
     
     if (editing && onSubmitEdit) {
       onSubmitEdit(editing.index, trimmed);
@@ -1499,6 +1518,66 @@ export default function ChatInput({
     );
   }
 
+  if (mode === "open_text") {
+    return (
+      <div>
+        {editingHeader}
+        <div className="space-y-3">
+          <textarea
+            ref={inputRef as any}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            disabled={disabled}
+            placeholder="Describe any upcoming events, plans, or circumstances that could affect your finances..."
+            className="input-field w-full min-h-[100px] resize-y"
+            autoFocus
+            rows={4}
+          />
+          <div className="flex gap-2 sm:gap-3">
+            {cancelButton}
+            <button
+              type="button"
+              onClick={() => {
+                if (disabled || !value.trim()) return;
+                onSend(value.trim());
+                setValue("");
+              }}
+              disabled={disabled || !value.trim()}
+              className="btn-primary flex-1"
+            >
+              Send
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (disabled) return;
+                onSend("nothing else");
+                setValue("");
+              }}
+              disabled={disabled}
+              className="btn-ghost border border-sage-300"
+            >
+              Nothing else
+            </button>
+            {onSkipToAnalysis && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (disabled) return;
+                  onSkipToAnalysis();
+                }}
+                disabled={disabled}
+                className="btn-ghost border border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+              >
+                Run Analysis
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       {editingHeader}
@@ -1522,6 +1601,9 @@ export default function ChatInput({
           {submitButtonText}
         </button>
       </form>
+      {validationError && (
+        <p className="mt-1 text-xs text-red-600">{validationError}</p>
+      )}
     </div>
   );
 }

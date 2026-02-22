@@ -185,3 +185,4 @@ class CanonicalPlanSchema(BaseModel):
     planned_cashflows: list[PlannedCashflow] = Field(default_factory=list)
     risk_summary: RiskSummary = Field(default_factory=RiskSummary)
     advisor_interview: dict[str, Any] = Field(default_factory=dict)
+    additional_considerations: ProvenanceField | None = None

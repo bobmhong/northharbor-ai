@@ -65,6 +65,8 @@ class StartInterviewResponse(BaseModel):
 class RespondRequest(BaseModel):
     session_id: str
     message: str
+    field_path: str | None = None
+    validated: bool = False
 
 
 class RespondResponse(BaseModel):
@@ -74,6 +76,7 @@ class RespondResponse(BaseModel):
     rejected_fields: list[str] = Field(default_factory=list)
     interview_complete: bool = False
     missing_fields: list[str] = Field(default_factory=list)
+    warnings: list[dict] = Field(default_factory=list)
 
 
 @router.post("/start", response_model=StartInterviewResponse)
@@ -202,9 +205,14 @@ async def respond(req: RespondRequest) -> RespondResponse:
             rejected_fields=[],
             interview_complete=decision.interview_complete,
             missing_fields=decision.missing_fields,
+            warnings=[],
         )
 
-    turn = await session.respond(req.message)
+    turn = await session.respond(
+        req.message,
+        field_path=req.field_path,
+        validated=req.validated,
+    )
 
     if turn.interview_complete and session.schema.status == "intake_in_progress":
         session.schema.status = "intake_complete"
@@ -222,4 +230,5 @@ async def respond(req: RespondRequest) -> RespondResponse:
         rejected_fields=rejected,
         interview_complete=turn.interview_complete,
         missing_fields=turn.policy_decision.missing_fields,
+        warnings=turn.warnings,
     )

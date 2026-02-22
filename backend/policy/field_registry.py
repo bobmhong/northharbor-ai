@@ -96,6 +96,12 @@ FIELD_GROUPS: list[FieldGroup] = [
         fields=["social_security.claiming_preference"],
         required=False,
     ),
+    FieldGroup(
+        "additional_considerations",
+        priority=12,
+        fields=["additional_considerations"],
+        required=False,
+    ),
 ]
 
 
@@ -161,6 +167,11 @@ QUESTION_TEMPLATES: dict[str, str] = {
         "At what age are you planning to claim Social Security? "
         "For most people, full retirement age is around 67 (claiming range: 62-70)."
     ),
+    "additional_considerations": (
+        "Before we wrap up, is there anything else you'd like me to consider? "
+        "For example, an upcoming vacation, a wedding, new construction, "
+        "or any other major life events that could affect your finances."
+    ),
 }
 
 CONFIRM_TEMPLATES: dict[str, str] = {
@@ -192,6 +203,11 @@ OPTIONAL_TEMPLATES: dict[str, str] = {
     "social_security.claiming_preference": (
         "At what age are you planning to claim Social Security? "
         "For most people, full retirement age is around 67 (claiming range: 62-70)."
+    ),
+    "additional_considerations": (
+        "Before we wrap up, is there anything else you'd like me to consider? "
+        "For example, an upcoming vacation, a wedding, new construction, "
+        "or any other major life events that could affect your finances."
     ),
 }
 

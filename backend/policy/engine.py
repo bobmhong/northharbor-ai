@@ -49,6 +49,7 @@ FIELD_FRIENDLY_NAMES: dict[str, str] = {
     "housing.status": "your housing status",
     "accounts.investment_strategy_id": "your investment strategy",
     "social_security.claiming_preference": "your Social Security claiming age",
+    "additional_considerations": "any additional considerations",
 }
 
 
@@ -201,26 +202,6 @@ def select_next_question(
                     missing_fields=group_missing,
                     reason=f"Required group '{group.name}' incomplete",
                 )
-
-    low_confidence = find_low_confidence_fields(schema, confidence_threshold)
-    if low_confidence:
-        field_path, confidence = low_confidence[0]
-        value = _resolve_field(schema, field_path)
-        display_value = value.value if isinstance(value, ProvenanceField) else value
-        template = CONFIRM_TEMPLATES.get(
-            field_path,
-            f"I have {_friendly_field_name(field_path)} as {{value}}. Can you confirm?",
-        )
-        try:
-            question = template.format(value=display_value)
-        except (KeyError, ValueError):
-            question = f"Can you confirm {_friendly_field_name(field_path)}?"
-        return PolicyDecision(
-            next_question=question,
-            target_field=field_path,
-            missing_fields=[],
-            reason=f"Field '{field_path}' has confidence {confidence:.2f}",
-        )
 
     optional_missing = find_missing_optional_fields(schema)
     if optional_missing:

@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from backend.ai.extractor import LLMClient, StubLLMClient, extract_and_apply
 from backend.interview.questions import completion_message, welcome_message
+from backend.policy.cross_field_rules import run_cross_field_checks
 from backend.policy.engine import PolicyDecision, select_next_question
 from backend.schema.canonical import CanonicalPlanSchema
 from backend.schema.patch_ops import PatchOp, PatchResult, apply_patches
@@ -38,6 +39,7 @@ class InterviewTurnResult(BaseModel):
     patch_result: PatchResult | None = None
     policy_decision: PolicyDecision
     interview_complete: bool = False
+    warnings: list[dict] = Field(default_factory=list)
 
 
 _NAME_PREFIX_RE = re.compile(r"^(?:my name is|i am|i'm)\s+", flags=re.IGNORECASE)
@@ -489,6 +491,14 @@ def _is_affirmative(message: str) -> bool:
     return normalized in _AFFIRMATIVE_REPLIES
 
 
+_SKIP_REPLIES = {"no", "nope", "nah", "nothing", "nothing else", "skip", "none", "n/a", "na"}
+
+
+def _is_skip_reply(message: str) -> bool:
+    normalized = " ".join(message.strip().lower().split())
+    return normalized in _SKIP_REPLIES
+
+
 _LOW_CONFIDENCE_THRESHOLD = 0.7
 
 
@@ -610,7 +620,13 @@ class InterviewSession:
             interview_complete=decision.interview_complete,
         )
 
-    async def respond(self, user_message: str) -> InterviewTurnResult:
+    async def respond(
+        self,
+        user_message: str,
+        *,
+        field_path: str | None = None,
+        validated: bool = False,
+    ) -> InterviewTurnResult:
         """Process a user message and return the next assistant response."""
         self.history.append(
             InterviewMessage(role="user", content=user_message)
@@ -619,43 +635,78 @@ class InterviewSession:
         ack_fields = ["client.name"]
         pre_populated = _populated_paths(self.schema, ack_fields)
 
-        try:
-            updated_schema, patch_result, decision = await extract_and_apply(
-                user_message,
-                self.schema,
-                self.conversation_history,
-                llm=self.llm,
-                model=self.model,
-            )
-        except Exception:
-            # Keep interview flow alive even if the model backend times out or fails.
-            updated_schema, patch_result = apply_patches(self.schema, [])
-            decision = select_next_question(updated_schema)
+        # Fast path: client-validated structured input -- skip LLM
+        if field_path and validated:
+            fast_patch = _fallback_patch_for_target(field_path, user_message)
+            if fast_patch:
+                fast_patch = PatchOp(
+                    op=fast_patch.op,
+                    path=fast_patch.path,
+                    value=fast_patch.value,
+                    confidence=1.0,
+                )
+                updated_schema, patch_result = apply_patches(self.schema, [fast_patch])
+                decision = select_next_question(updated_schema)
+            else:
+                field_path = None
+                validated = False
 
-        if not patch_result.applied:
-            fallback_patch: PatchOp | None = None
-            if decision.target_field and _is_affirmative(user_message):
-                existing_value = _resolve_path_value(updated_schema, decision.target_field)
-                if existing_value is not None:
-                    fallback_patch = PatchOp(
-                        op="set",
-                        path=decision.target_field,
-                        value=existing_value,
-                        confidence=1.0,
-                    )
-            if fallback_patch is None:
-                fallback_patch = _fallback_patch_for_target(decision.target_field, user_message)
-            if fallback_patch is not None:
-                updated_schema, fallback_result = apply_patches(updated_schema, [fallback_patch])
-                patch_result = _merge_patch_results(patch_result, fallback_result)
-        else:
-            updated_schema = _boost_low_confidence_applied(
-                updated_schema, patch_result, user_message,
+        if not (field_path and validated):
+            try:
+                updated_schema, patch_result, decision = await extract_and_apply(
+                    user_message,
+                    self.schema,
+                    self.conversation_history,
+                    llm=self.llm,
+                    model=self.model,
+                )
+            except Exception:
+                updated_schema, patch_result = apply_patches(self.schema, [])
+                decision = select_next_question(updated_schema)
+
+            if not patch_result.applied:
+                fallback_patch: PatchOp | None = None
+                if decision.target_field and _is_affirmative(user_message):
+                    existing_value = _resolve_path_value(updated_schema, decision.target_field)
+                    if existing_value is not None:
+                        fallback_patch = PatchOp(
+                            op="set",
+                            path=decision.target_field,
+                            value=existing_value,
+                            confidence=1.0,
+                        )
+                if fallback_patch is None:
+                    fallback_patch = _fallback_patch_for_target(decision.target_field, user_message)
+                if fallback_patch is not None:
+                    updated_schema, fallback_result = apply_patches(updated_schema, [fallback_patch])
+                    patch_result = _merge_patch_results(patch_result, fallback_result)
+            else:
+                updated_schema = _boost_low_confidence_applied(
+                    updated_schema, patch_result, user_message,
+                )
+
+        # Handle skip replies for additional_considerations
+        if (
+            decision.target_field == "additional_considerations"
+            and _is_skip_reply(user_message)
+        ):
+            updated_schema, skip_result = apply_patches(
+                updated_schema,
+                [PatchOp(op="set", path="additional_considerations", value="none", confidence=1.0)],
             )
+            patch_result = _merge_patch_results(patch_result, skip_result)
+            decision = select_next_question(updated_schema)
 
         updated_schema, _ = _sync_linked_fields(updated_schema)
         decision = select_next_question(updated_schema)
         self.schema = updated_schema
+
+        # Run cross-field validation
+        cf_warnings = run_cross_field_checks(updated_schema)
+        warnings = [
+            {"rule_id": w.rule_id, "fields": w.fields, "message": w.message, "suggestion": w.suggestion}
+            for w in cf_warnings
+        ]
 
         if decision.interview_complete:
             reply = completion_message()
@@ -691,4 +742,5 @@ class InterviewSession:
             patch_result=patch_result,
             policy_decision=decision,
             interview_complete=decision.interview_complete,
+            warnings=warnings,
         )

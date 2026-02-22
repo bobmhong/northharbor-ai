@@ -115,14 +115,11 @@ class TestInterviewSessionFallback(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(session.schema.location.state.value, "Washington")
         self.assertEqual(session.schema.location.city.value, "Seattle")
 
-    async def test_affirmative_confirmation_marks_field_high_confidence(self) -> None:
+    async def test_after_required_fields_moves_to_optional(self) -> None:
+        """After all required fields are filled, engine skips to optional fields (no confirmation loop)."""
         session = InterviewSession(_make_schema(), llm=StubLLMClient())
         session.start()
 
-        # Fill all required fields in the order the policy engine asks them.
-        # Field groups by priority: identity, location, income,
-        # retirement_goals, accounts, spending, social_security,
-        # monte_carlo_params.
         for answer in [
             "bob jones",        # client.name
             "1982",             # client.birth_year
@@ -141,14 +138,11 @@ class TestInterviewSessionFallback(unittest.IsolatedAsyncioTestCase):
         ]:
             await session.respond(answer)
 
-        # First low-confidence field: success_probability_target (default
-        # value 0.95 at confidence 0.0). Confirming "yes" re-applies the
-        # existing value at confidence 1.0.
-        confirm_turn = await session.respond("yes")
-        self.assertIn(
-            "retirement_philosophy.success_probability_target",
-            [p.path for p in confirm_turn.patch_result.applied],
-        )
+        # With the confirmation loop removed, the engine should move straight
+        # to optional fields instead of asking to confirm low-confidence values.
+        next_turn = await session.respond("rent")
+        self.assertFalse(next_turn.interview_complete)
+        self.assertIn("housing.status", [p.path for p in next_turn.patch_result.applied])
 
     async def test_invalid_birth_year_gets_clear_feedback(self) -> None:
         session = InterviewSession(_make_schema(), llm=StubLLMClient())
@@ -319,3 +313,55 @@ class TestSyncLinkedFields(unittest.TestCase):
         synced, _ = _sync_linked_fields(schema)
 
         self.assertEqual(synced.monte_carlo.required_success_rate.value, 0.95)
+
+
+class TestFastPath(unittest.IsolatedAsyncioTestCase):
+    """Tests for the validated fast path that skips LLM."""
+
+    async def test_fast_path_applies_with_high_confidence(self) -> None:
+        """Client-validated input should apply with confidence 1.0."""
+        session = InterviewSession(_make_schema(), llm=StubLLMClient())
+        session.start()
+
+        turn = await session.respond(
+            "Bob Jones",
+            field_path="client.name",
+            validated=True,
+        )
+
+        self.assertEqual(session.schema.client.name.value, "Bob Jones")
+        name_patches = [p for p in turn.patch_result.applied if p.path == "client.name"]
+        self.assertTrue(len(name_patches) > 0)
+
+    async def test_fast_path_falls_back_on_parse_failure(self) -> None:
+        """When deterministic parse fails, should fall through to LLM path."""
+        session = InterviewSession(_make_schema(), llm=StubLLMClient())
+        session.start()
+
+        turn = await session.respond(
+            "Bob",
+            field_path="client.name",
+            validated=True,
+        )
+
+        self.assertIsNotNone(turn.assistant_message)
+
+    async def test_skip_reply_marks_additional_considerations(self) -> None:
+        """'nothing else' should mark additional_considerations as answered."""
+        session = InterviewSession(_make_schema(), llm=StubLLMClient())
+        session.start()
+
+        for answer in [
+            "bob jones", "1982", "Washington", "Seattle",
+            "185000", "500000", "750000", "yes", "3", "6",
+            "9000", "4200", "5300", "250000",
+        ]:
+            await session.respond(answer)
+
+        await session.respond("rent")
+        await session.respond("moderate")
+        await session.respond("67")
+
+        turn = await session.respond("nothing else")
+
+        self.assertEqual(session.schema.additional_considerations.value, "none")
