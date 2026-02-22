@@ -105,7 +105,7 @@ class OllamaLLMClient:
             raise ValueError("Ollama response did not include assistant message content")
 
         tracker = get_llm_tracker()
-        tracker.track_call(
+        await tracker.track_call(
             model=model,
             request_content=request_content,
             response_content=content,
@@ -180,7 +180,7 @@ class OpenAILLMClient:
             raise ValueError("OpenAI response did not include assistant message content")
 
         tracker = get_llm_tracker()
-        tracker.track_call(
+        await tracker.track_call(
             model=model,
             request_content=request_content,
             response_content=content,

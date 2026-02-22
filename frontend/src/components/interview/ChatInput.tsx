@@ -542,7 +542,11 @@ export default function ChatInput({
     if (disabled) return;
     const isMoneyMode = mode === "income" || mode === "legacy" || mode === "balance" || mode === "spending";
     const formattedValue = isMoneyMode ? formatDollarValue(selectedValue) : selectedValue;
-    onSend(formattedValue);
+    if (editing && onSubmitEdit) {
+      onSubmitEdit(editing.index, formattedValue);
+    } else {
+      onSend(formattedValue);
+    }
     setValue("");
   }
 

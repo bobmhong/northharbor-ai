@@ -141,6 +141,49 @@ function buildCorrectionMessage(fieldName: string, formattedValue: string): stri
   return `Got it! I've updated your ${field} to ${formattedValue}.`;
 }
 
+function parseRawFieldValue(fieldPath: string, displayValue: string): unknown {
+  const trimmed = displayValue.trim();
+
+  const booleanFields = ["accounts.has_employer_plan"];
+  if (booleanFields.includes(fieldPath)) {
+    const lower = trimmed.toLowerCase();
+    if (["yes", "true", "1"].includes(lower)) return true;
+    if (["no", "false", "0"].includes(lower)) return false;
+    return trimmed;
+  }
+
+  const integerFields = [
+    "income.current_gross_annual",
+    "retirement_philosophy.legacy_goal_total_real",
+    "accounts.retirement_balance",
+    "spending.retirement_monthly_real",
+    "client.birth_year",
+  ];
+  if (integerFields.includes(fieldPath)) {
+    const num = parseInt(trimmed.replace(/[$,%]/g, "").replace(/,/g, ""), 10);
+    if (!isNaN(num)) return num;
+  }
+
+  const floatFields = [
+    "accounts.employer_match_percent",
+    "accounts.employee_contribution_percent",
+    "accounts.savings_rate_percent",
+    "retirement_philosophy.success_probability_target",
+    "monte_carlo.required_success_rate",
+  ];
+  if (floatFields.includes(fieldPath)) {
+    const num = parseFloat(trimmed.replace(/%$/, ""));
+    if (!isNaN(num)) return num / 100;
+  }
+
+  const numericValue = trimmed.replace(/[$,]/g, "");
+  if (/^\d+(\.\d+)?$/.test(numericValue)) {
+    return parseFloat(numericValue);
+  }
+
+  return trimmed;
+}
+
 export default function InterviewPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -377,8 +420,9 @@ export default function InterviewPage() {
   const handleSubmitEdit = useCallback(
     async (index: number, newContent: string) => {
       const precedingQuestion = editing?.precedingQuestion;
+      const fieldPath = editing?.precedingFieldPath ?? messages[index]?.fieldPath;
       const fieldName =
-        fieldLabelFromPath(editing?.precedingFieldPath) ??
+        fieldLabelFromPath(fieldPath) ??
         extractFieldName(precedingQuestion);
       const formattedValue = formatCorrectionValue(newContent, fieldName);
       const correctionMessage = buildCorrectionMessage(fieldName, formattedValue);
@@ -401,7 +445,29 @@ export default function InterviewPage() {
       });
       addMessage("assistant", correctionMessage);
       
-      if (sessionId) {
+      const activePlanId = planId || planIdParam;
+      if (activePlanId && fieldPath) {
+        setLoading(true);
+        try {
+          const rawValue = parseRawFieldValue(fieldPath, newContent);
+          await api.updatePlanFields(activePlanId, [{ path: fieldPath, value: rawValue }]);
+          queryClient.invalidateQueries({ queryKey: ["plan", activePlanId] });
+          queryClient.invalidateQueries({ queryKey: ["plans"] });
+
+          if (sessionId && !isComplete) {
+            const res = await api.respond(sessionId, `[Updated ${fieldName}]`);
+            addMessage("assistant", res.message, { fieldPath: res.target_field ?? undefined });
+            if (res.interview_complete) {
+              setComplete(true);
+              setPhase("ready_for_analysis");
+            }
+          }
+        } catch {
+          addMessage("assistant", "I had trouble saving that update. Please try again.");
+        } finally {
+          setLoading(false);
+        }
+      } else if (sessionId) {
         setLoading(true);
         try {
           const res = await api.respond(sessionId, `[Correction] My ${fieldName} should be: ${formattedValue}`);
@@ -410,8 +476,7 @@ export default function InterviewPage() {
             setComplete(true);
             setPhase("ready_for_analysis");
           }
-          
-          queryClient.invalidateQueries({ queryKey: ["plan", planId || planIdParam] });
+          queryClient.invalidateQueries({ queryKey: ["plan", activePlanId] });
           queryClient.invalidateQueries({ queryKey: ["plans"] });
         } catch {
           addMessage("assistant", "I've noted your correction. Let's continue.");
@@ -420,7 +485,7 @@ export default function InterviewPage() {
         }
       }
     },
-    [sessionId, planId, planIdParam, queryClient, editing, messages.length, markMessageUpdated, addMessage, setLoading, setComplete, setEditing, setPhase]
+    [sessionId, planId, planIdParam, queryClient, editing, messages, markMessageUpdated, addMessage, setLoading, setComplete, setEditing, setPhase, isComplete]
   );
 
   const handleSendWithEditDetection = useCallback(

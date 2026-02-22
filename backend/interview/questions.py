@@ -15,8 +15,9 @@ from backend.policy.field_registry import (
 
 def welcome_message() -> str:
     return (
-        "Welcome to North Harbor! I'll help you build a personalized "
-        "retirement plan. Let's start with some basic information."
+        "Hi, I'm Sage — your retirement planning assistant. "
+        "I'll walk you through a few questions to build a personalized "
+        "plan. Let's get started!"
     )
 
 

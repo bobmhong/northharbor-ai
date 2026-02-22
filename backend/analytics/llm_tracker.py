@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from typing import Any
+
 from backend.analytics.models import LLMCallMetric
 from backend.analytics.store import InMemoryLLMAnalyticsStore, LLMAnalyticsStore
 
@@ -50,7 +52,7 @@ class LLMTracker:
         """Swap tracker storage backend."""
         self._store = store
 
-    def track_call(
+    async def track_call(
         self,
         *,
         model: str,
@@ -73,16 +75,16 @@ class LLMTracker:
             session_id=session_id,
         )
 
-        self._store.append(metric)
+        await self._store.append(metric)
         return metric
 
-    def get_metrics_since(self, since: datetime) -> list[LLMCallMetric]:
+    async def get_metrics_since(self, since: datetime) -> list[LLMCallMetric]:
         """Get all metrics since a given datetime."""
-        return self._store.get_since(since)
+        return await self._store.get_since(since)
 
-    def aggregate(self, period: str, since: datetime) -> AggregatedMetrics:
+    async def aggregate(self, period: str, since: datetime) -> AggregatedMetrics:
         """Aggregate metrics for a time period."""
-        metrics = self.get_metrics_since(since)
+        metrics = await self.get_metrics_since(since)
 
         total_requests = len(metrics)
         total_tokens = sum(m.estimated_tokens for m in metrics)
@@ -102,24 +104,24 @@ class LLMTracker:
             models_used=models_used,
         )
 
-    def get_aggregated_metrics(self) -> dict[str, AggregatedMetrics]:
+    async def get_aggregated_metrics(self) -> dict[str, AggregatedMetrics]:
         """Get metrics aggregated by today, last 7 days, and last 30 days."""
         now = datetime.now(timezone.utc)
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
         return {
-            "today": self.aggregate("today", today_start),
-            "last_7_days": self.aggregate("last_7_days", now - timedelta(days=7)),
-            "last_30_days": self.aggregate("last_30_days", now - timedelta(days=30)),
+            "today": await self.aggregate("today", today_start),
+            "last_7_days": await self.aggregate("last_7_days", now - timedelta(days=7)),
+            "last_30_days": await self.aggregate("last_30_days", now - timedelta(days=30)),
         }
 
-    def get_recent_calls(self, limit: int = 10) -> list[LLMCallMetric]:
+    async def get_recent_calls(self, limit: int = 10) -> list[LLMCallMetric]:
         """Get the most recent LLM calls."""
-        return self._store.get_recent(limit=limit)
+        return await self._store.get_recent(limit=limit)
 
-    def clear(self) -> None:
+    async def clear(self) -> None:
         """Clear all metrics (useful for testing)."""
-        self._store.clear()
+        await self._store.clear()
 
 
 def get_llm_tracker(store: LLMAnalyticsStore | None = None) -> LLMTracker:

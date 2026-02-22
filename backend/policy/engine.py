@@ -96,7 +96,7 @@ def _is_populated(value: Any) -> bool:
         if isinstance(v, bool):
             return True  # Both True and False are valid populated values
         if isinstance(v, (int, float)) and v == 0:
-            return False
+            return value.confidence > 0
         return True
     if isinstance(value, str) and value.strip() == "":
         return False

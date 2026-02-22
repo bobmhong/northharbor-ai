@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import unittest
 from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
@@ -34,107 +36,124 @@ def _metric(
     )
 
 
-def _reset_tracker(monkeypatch, tmp_path) -> LLMTracker:
-    monkeypatch.setattr(LLMTracker, "_instance", None)
-    tracker = get_llm_tracker(store=InMemoryLLMAnalyticsStore())
-    monkeypatch.setattr(api_deps, "get_llm_analytics_store", lambda: tracker._store)
-    return tracker
+class TestLLMTracker(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        self._prev_instance = LLMTracker._instance
+        LLMTracker._instance = None
+        self._store = InMemoryLLMAnalyticsStore()
+        self._tracker = get_llm_tracker(store=self._store)
+        self._prev_get_store = api_deps.get_llm_analytics_store
+        api_deps.get_llm_analytics_store = lambda: self._store
+
+    def tearDown(self) -> None:
+        LLMTracker._instance = self._prev_instance
+        api_deps.get_llm_analytics_store = self._prev_get_store
+
+    async def test_track_call_records_sizes_tokens_and_persists(self) -> None:
+        request_content = "hello world"
+        response_content = "ok"
+        metric = await self._tracker.track_call(
+            model="gpt-4o-mini",
+            request_content=request_content,
+            response_content=response_content,
+            session_id="abc-123",
+        )
+
+        self.assertEqual(metric.request_bytes, len(request_content.encode("utf-8")))
+        self.assertEqual(metric.response_bytes, len(response_content.encode("utf-8")))
+        self.assertEqual(
+            metric.estimated_tokens,
+            (len(request_content) + len(response_content)) // 4,
+        )
+        self.assertEqual(metric.session_id, "abc-123")
+
+        recent = await self._tracker.get_recent_calls(limit=1)
+        persisted = json.loads(json.dumps([m.to_dict() for m in recent]))
+        self.assertEqual(len(persisted), 1)
+        self.assertEqual(persisted[0]["model"], "gpt-4o-mini")
+
+    async def test_aggregation_windows_and_model_counts(self) -> None:
+        metrics = [
+            _metric(days_ago=0, minutes_ago=5, model="gpt-4o-mini"),
+            _metric(days_ago=2, model="gpt-4o-mini"),
+            _metric(days_ago=20, model="gpt-4o"),
+            _metric(days_ago=40, model="gpt-4o"),  # excluded from 30-day window
+        ]
+        for metric in metrics:
+            await self._store.append(metric)
+
+        aggregated = await self._tracker.get_aggregated_metrics()
+
+        self.assertEqual(aggregated["today"].total_requests, 1)
+        self.assertEqual(aggregated["last_7_days"].total_requests, 2)
+        self.assertEqual(aggregated["last_30_days"].total_requests, 3)
+        self.assertEqual(aggregated["last_30_days"].models_used["gpt-4o-mini"], 2)
+        self.assertEqual(aggregated["last_30_days"].models_used["gpt-4o"], 1)
+
+    async def test_recent_calls_are_descending_and_limited(self) -> None:
+        metrics = [
+            _metric(days_ago=3),
+            _metric(days_ago=2),
+            _metric(days_ago=1),
+            _metric(hours_ago=1),
+        ]
+        for metric in metrics:
+            await self._store.append(metric)
+
+        recent = await self._tracker.get_recent_calls(limit=2)
+
+        self.assertEqual(len(recent), 2)
+        self.assertGreaterEqual(recent[0].timestamp, recent[1].timestamp)
 
 
-def test_track_call_records_sizes_tokens_and_persists(tmp_path, monkeypatch) -> None:
-    tracker = _reset_tracker(monkeypatch, tmp_path)
+class TestLLMAnalyticsEndpoint(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        self._prev_instance = LLMTracker._instance
+        LLMTracker._instance = None
+        self._store = InMemoryLLMAnalyticsStore()
+        self._tracker = get_llm_tracker(store=self._store)
+        self._prev_get_store = api_deps.get_llm_analytics_store
+        api_deps.get_llm_analytics_store = lambda: self._store
+        self._prev_env = os.environ.get("ENVIRONMENT")
 
-    request_content = "hello world"
-    response_content = "ok"
-    metric = tracker.track_call(
-        model="gpt-4o-mini",
-        request_content=request_content,
-        response_content=response_content,
-        session_id="abc-123",
-    )
+    def tearDown(self) -> None:
+        LLMTracker._instance = self._prev_instance
+        api_deps.get_llm_analytics_store = self._prev_get_store
+        if self._prev_env is None:
+            os.environ.pop("ENVIRONMENT", None)
+        else:
+            os.environ["ENVIRONMENT"] = self._prev_env
 
-    assert metric.request_bytes == len(request_content.encode("utf-8"))
-    assert metric.response_bytes == len(response_content.encode("utf-8"))
-    assert metric.estimated_tokens == (len(request_content) + len(response_content)) // 4
-    assert metric.session_id == "abc-123"
+    async def test_endpoint_returns_data_in_dev_mode(self) -> None:
+        tracker = get_llm_tracker()
+        await tracker.track_call(
+            model="gpt-4o-mini",
+            request_content="request text",
+            response_content="response text",
+            session_id="sess-1",
+        )
+        await tracker.track_call(
+            model="gpt-4o",
+            request_content="another request",
+            response_content="another response",
+            session_id="sess-2",
+        )
 
-    recent = tracker.get_recent_calls(limit=1)
-    persisted = json.loads(json.dumps([m.to_dict() for m in recent]))
-    assert len(persisted) == 1
-    assert persisted[0]["model"] == "gpt-4o-mini"
+        os.environ["ENVIRONMENT"] = "development"
+        client = TestClient(create_app())
 
+        resp = client.get("/api/admin/analytics/llm")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertGreaterEqual(data["today"]["total_requests"], 2)
+        self.assertIn({"model": "gpt-4o-mini", "count": 1}, data["today"]["models_used"])
+        self.assertIn({"model": "gpt-4o", "count": 1}, data["today"]["models_used"])
+        self.assertGreaterEqual(len(data["recent_calls"]), 2)
 
-def test_aggregation_windows_and_model_counts(tmp_path, monkeypatch) -> None:
-    tracker = _reset_tracker(monkeypatch, tmp_path)
-    metrics = [
-        _metric(days_ago=0, minutes_ago=5, model="gpt-4o-mini"),
-        _metric(days_ago=2, model="gpt-4o-mini"),
-        _metric(days_ago=20, model="gpt-4o"),
-        _metric(days_ago=40, model="gpt-4o"),  # excluded from 30-day window
-    ]
-    for metric in metrics:
-        tracker._store.append(metric)
+    async def test_endpoint_forbidden_outside_dev(self) -> None:
+        os.environ["ENVIRONMENT"] = "production"
+        client = TestClient(create_app())
 
-    aggregated = tracker.get_aggregated_metrics()
-
-    assert aggregated["today"].total_requests == 1
-    assert aggregated["last_7_days"].total_requests == 2
-    assert aggregated["last_30_days"].total_requests == 3
-    assert aggregated["last_30_days"].models_used["gpt-4o-mini"] == 2
-    assert aggregated["last_30_days"].models_used["gpt-4o"] == 1
-
-
-def test_recent_calls_are_descending_and_limited(tmp_path, monkeypatch) -> None:
-    tracker = _reset_tracker(monkeypatch, tmp_path)
-    metrics = [
-        _metric(days_ago=3),
-        _metric(days_ago=2),
-        _metric(days_ago=1),
-        _metric(hours_ago=1),
-    ]
-    for metric in metrics:
-        tracker._store.append(metric)
-
-    recent = tracker.get_recent_calls(limit=2)
-
-    assert len(recent) == 2
-    assert recent[0].timestamp >= recent[1].timestamp
-
-
-def test_llm_analytics_endpoint_returns_data_in_dev_mode(tmp_path, monkeypatch) -> None:
-    _ = _reset_tracker(monkeypatch, tmp_path)
-    tracker = get_llm_tracker()
-    tracker.track_call(
-        model="gpt-4o-mini",
-        request_content="request text",
-        response_content="response text",
-        session_id="sess-1",
-    )
-    tracker.track_call(
-        model="gpt-4o",
-        request_content="another request",
-        response_content="another response",
-        session_id="sess-2",
-    )
-
-    monkeypatch.setenv("ENVIRONMENT", "development")
-    client = TestClient(create_app())
-
-    resp = client.get("/api/admin/analytics/llm")
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["today"]["total_requests"] >= 2
-    assert {"model": "gpt-4o-mini", "count": 1} in data["today"]["models_used"]
-    assert {"model": "gpt-4o", "count": 1} in data["today"]["models_used"]
-    assert len(data["recent_calls"]) >= 2
-
-
-def test_llm_analytics_endpoint_forbidden_outside_dev(tmp_path, monkeypatch) -> None:
-    _reset_tracker(monkeypatch, tmp_path)
-    monkeypatch.setenv("ENVIRONMENT", "production")
-    client = TestClient(create_app())
-
-    resp = client.get("/api/admin/analytics/llm")
-    assert resp.status_code == 403
-    assert "development mode" in resp.json()["detail"]
-
+        resp = client.get("/api/admin/analytics/llm")
+        self.assertEqual(resp.status_code, 403)
+        self.assertIn("development mode", resp.json()["detail"])

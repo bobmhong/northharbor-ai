@@ -104,7 +104,7 @@ async def start_interview(req: StartInterviewRequest) -> StartInterviewResponse:
                     schema.status = "intake_complete"
                     await store_plan(schema)
             else:
-                message = f"Welcome back! Let's continue where we left off.\n\n{decision.next_question}"
+                message = f"Welcome back! It's Sage — let's pick up where we left off.\n\n{decision.next_question}"
             
             return StartInterviewResponse(
                 session_id=existing_session.session_id,
@@ -181,6 +181,28 @@ async def respond(req: RespondRequest) -> RespondResponse:
     session = await get_session(req.session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
+
+    fresh_plan = await get_plan(session.schema.plan_id)
+    if fresh_plan is not None:
+        session.schema = fresh_plan
+
+    if req.message.startswith("[Updated "):
+        from backend.policy.engine import select_next_question
+
+        decision = select_next_question(session.schema)
+        if decision.interview_complete and session.schema.status == "intake_in_progress":
+            session.schema.status = "intake_complete"
+            await store_plan(session.schema)
+
+        message = decision.next_question or "Could you tell me more?"
+        return RespondResponse(
+            message=message,
+            target_field=decision.target_field,
+            applied_fields=[],
+            rejected_fields=[],
+            interview_complete=decision.interview_complete,
+            missing_fields=decision.missing_fields,
+        )
 
     turn = await session.respond(req.message)
 

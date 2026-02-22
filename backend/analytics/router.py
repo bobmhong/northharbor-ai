@@ -62,8 +62,8 @@ async def get_llm_analytics() -> LLMAnalyticsResponse:
         )
 
     tracker = get_llm_tracker(store=api_deps.get_llm_analytics_store())
-    aggregated = tracker.get_aggregated_metrics()
-    recent = tracker.get_recent_calls(limit=10)
+    aggregated = await tracker.get_aggregated_metrics()
+    recent = await tracker.get_recent_calls(limit=10)
 
     def to_period_metrics(data: Any) -> PeriodMetrics:
         return PeriodMetrics(

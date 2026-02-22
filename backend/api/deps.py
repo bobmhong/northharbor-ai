@@ -17,6 +17,7 @@ from backend.analytics.llm_tracker import get_llm_tracker
 from backend.analytics.store import (
     InMemoryLLMAnalyticsStore,
     LLMAnalyticsStore,
+    MongoLLMAnalyticsStore,
 )
 from backend.config import Settings, get_settings
 from backend.interview.session import InterviewMessage, InterviewSession
@@ -61,20 +62,22 @@ async def init_stores(settings: Settings | None = None) -> None:
         plan_store = MongoPlanStore(db)
         session_store = MongoSessionStore(db)
         snapshot_store = MongoSnapshotStore(db)
+        analytics_store = MongoLLMAnalyticsStore(db)
 
         await plan_store.ensure_indexes()
         await session_store.ensure_indexes()
         await snapshot_store.ensure_indexes()
+        await analytics_store.ensure_indexes()
 
         _plan_store = plan_store
         _session_store = session_store
         _snapshot_store = snapshot_store
+        _analytics_store = analytics_store
     else:
         _plan_store = InMemoryPlanStore()
         _session_store = InMemorySessionStore()
         _snapshot_store = InMemorySnapshotStore()
-
-    _analytics_store = InMemoryLLMAnalyticsStore()
+        _analytics_store = InMemoryLLMAnalyticsStore()
 
     get_llm_tracker(store=_analytics_store)
     logger.info("Stores initialized with backend=%s", backend)

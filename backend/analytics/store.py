@@ -15,19 +15,19 @@ from backend.analytics.models import LLMCallMetric
 class LLMAnalyticsStore(Protocol):
     """Interface for persisting and querying LLM analytics metrics."""
 
-    def append(self, metric: LLMCallMetric) -> None:
+    async def append(self, metric: LLMCallMetric) -> None:
         """Persist a single metric entry."""
         ...
 
-    def get_since(self, since: datetime) -> list[LLMCallMetric]:
+    async def get_since(self, since: datetime) -> list[LLMCallMetric]:
         """Return metrics whose timestamp is >= since."""
         ...
 
-    def get_recent(self, limit: int = 10) -> list[LLMCallMetric]:
+    async def get_recent(self, limit: int = 10) -> list[LLMCallMetric]:
         """Return metrics ordered by descending timestamp."""
         ...
 
-    def clear(self) -> None:
+    async def clear(self) -> None:
         """Delete all persisted metrics."""
         ...
 
@@ -38,16 +38,16 @@ class InMemoryLLMAnalyticsStore:
     def __init__(self) -> None:
         self._metrics: list[LLMCallMetric] = []
 
-    def append(self, metric: LLMCallMetric) -> None:
+    async def append(self, metric: LLMCallMetric) -> None:
         self._metrics.append(metric)
 
-    def get_since(self, since: datetime) -> list[LLMCallMetric]:
+    async def get_since(self, since: datetime) -> list[LLMCallMetric]:
         return [m for m in self._metrics if m.timestamp >= since]
 
-    def get_recent(self, limit: int = 10) -> list[LLMCallMetric]:
+    async def get_recent(self, limit: int = 10) -> list[LLMCallMetric]:
         return sorted(self._metrics, key=lambda m: m.timestamp, reverse=True)[:limit]
 
-    def clear(self) -> None:
+    async def clear(self) -> None:
         self._metrics = []
 
 
@@ -73,10 +73,10 @@ class MongoLLMAnalyticsStore:
     async def clear(self) -> None:
         await self._col.delete_many({})
 
-    def ensure_indexes(self) -> None:
-        self._col.create_index("timestamp")
-        self._col.create_index([("model", 1), ("timestamp", -1)])
-        self._col.create_index([("session_id", 1), ("timestamp", -1)])
+    async def ensure_indexes(self) -> None:
+        await self._col.create_index("timestamp")
+        await self._col.create_index([("model", 1), ("timestamp", -1)])
+        await self._col.create_index([("session_id", 1), ("timestamp", -1)])
 
     @staticmethod
     def _from_doc(doc: dict[str, Any]) -> LLMCallMetric:
