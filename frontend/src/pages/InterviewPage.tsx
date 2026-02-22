@@ -221,7 +221,25 @@ export default function InterviewPage() {
       }
       
       if (res.interview_complete) setComplete(true);
-    } catch (err) {
+    } catch (err: unknown) {
+      const is404 =
+        err instanceof Error &&
+        (err.message.includes("404") || err.message.includes("not found"));
+      if (is404 && planIdParam) {
+        setSearchParams({}, { replace: true });
+        try {
+          const retry = await api.startInterview({});
+          setSession(retry.session_id, retry.plan_id);
+          setSearchParams({ plan_id: retry.plan_id }, { replace: true });
+          addMessage("assistant", retry.message, {
+            fieldPath: retry.target_field ?? undefined,
+          });
+          if (retry.interview_complete) setComplete(true);
+          return;
+        } catch {
+          // fall through to generic error
+        }
+      }
       addMessage("assistant", "Failed to start interview. Please try again.");
     } finally {
       setLoading(false);
@@ -284,14 +302,22 @@ export default function InterviewPage() {
         queryClient.invalidateQueries({ queryKey: ["plans"] });
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : "";
-        if (errorMessage.toLowerCase().includes("session not found")) {
+        const isSessionLost =
+          errorMessage.toLowerCase().includes("session not found") ||
+          errorMessage.includes("404") ||
+          errorMessage.toLowerCase().includes("not found");
+        if (isSessionLost) {
           addMessage(
             "assistant",
             "Your interview session expired after a backend reload. Starting a new session now...",
           );
           try {
-            const start = await api.startInterview({ planId: planIdParam });
+            let start = await api.startInterview({ planId: planIdParam }).catch(async () => {
+              setSearchParams({}, { replace: true });
+              return api.startInterview({});
+            });
             setSession(start.session_id, start.plan_id);
+            setSearchParams({ plan_id: start.plan_id }, { replace: true });
             addMessage("assistant", start.message, { fieldPath: start.target_field ?? undefined });
             const retry = await api.respond(start.session_id, message);
             addMessage("assistant", retry.message, { fieldPath: retry.target_field ?? undefined });

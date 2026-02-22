@@ -6,12 +6,10 @@ from backend.analytics.llm_tracker import (
     LLMTracker,
     get_llm_tracker,
 )
-from backend.analytics.router import router
 
 __all__ = [
     "AggregatedMetrics",
     "LLMCallMetric",
     "LLMTracker",
     "get_llm_tracker",
-    "router",
 ]

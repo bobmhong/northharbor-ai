@@ -81,7 +81,7 @@ class TestInterviewSessionFallback(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsNone(session.schema.client.name.value)
         self.assertIn("full name", turn.assistant_message.lower())
-        self.assertIn("What is your full name?", turn.assistant_message)
+        self.assertIn("What should I call you?", turn.assistant_message)
 
     async def test_fallback_extracts_birth_year_after_name(self) -> None:
         session = InterviewSession(_make_schema(), llm=StubLLMClient())
@@ -113,23 +113,31 @@ class TestInterviewSessionFallback(unittest.IsolatedAsyncioTestCase):
         session = InterviewSession(_make_schema(), llm=StubLLMClient())
         session.start()
 
-        # Fill required fields so policy reaches low-confidence confirmations.
+        # Fill all required fields in the order the policy engine asks them.
+        # Field groups by priority: identity, location, income,
+        # retirement_goals, accounts, spending, social_security,
+        # monte_carlo_params.
         for answer in [
-            "bob jones",
-            "1982",
-            "Washington",
-            "Seattle",
-            "185000",
-            "500000",
-            "750000",
-            "15%",
-            "9000",
-            "4200",
-            "5300",
-            "250000",
+            "bob jones",        # client.name
+            "1982",             # client.birth_year
+            "Washington",       # location.state
+            "Seattle",          # location.city
+            "185000",           # income.current_gross_annual
+            "500000",           # retirement_philosophy.legacy_goal_total_real
+            "750000",           # accounts.retirement_balance
+            "yes",              # accounts.has_employer_plan
+            "3",                # accounts.employer_match_percent
+            "6",                # accounts.employee_contribution_percent
+            "9000",             # spending.retirement_monthly_real
+            "4200",             # social_security.combined_at_67_monthly
+            "5300",             # social_security.combined_at_70_monthly
+            "250000",           # monte_carlo.legacy_floor
         ]:
             await session.respond(answer)
 
+        # First low-confidence field: success_probability_target (default
+        # value 0.95 at confidence 0.0). Confirming "yes" re-applies the
+        # existing value at confidence 1.0.
         confirm_turn = await session.respond("yes")
         self.assertIn(
             "retirement_philosophy.success_probability_target",
