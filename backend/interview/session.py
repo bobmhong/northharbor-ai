@@ -569,8 +569,8 @@ class InterviewSession:
             decision = select_next_question(updated_schema)
 
         if not patch_result.applied:
-            fallback_patch = _fallback_patch_for_target(decision.target_field, user_message)
-            if fallback_patch is None and decision.target_field and _is_affirmative(user_message):
+            fallback_patch: PatchOp | None = None
+            if decision.target_field and _is_affirmative(user_message):
                 existing_value = _resolve_path_value(updated_schema, decision.target_field)
                 if existing_value is not None:
                     fallback_patch = PatchOp(
@@ -579,6 +579,8 @@ class InterviewSession:
                         value=existing_value,
                         confidence=1.0,
                     )
+            if fallback_patch is None:
+                fallback_patch = _fallback_patch_for_target(decision.target_field, user_message)
             if fallback_patch is not None:
                 updated_schema, fallback_result = apply_patches(updated_schema, [fallback_patch])
                 patch_result = _merge_patch_results(patch_result, fallback_result)
