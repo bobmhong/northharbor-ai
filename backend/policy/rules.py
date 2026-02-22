@@ -43,6 +43,12 @@ def should_skip_employer_match(schema: CanonicalPlanSchema) -> bool:
     return False
 
 
+def should_skip_monte_carlo_success_rate(schema: CanonicalPlanSchema) -> bool:
+    """Skip if the user already provided a success target in retirement goals."""
+    target = _pf_value(schema.retirement_philosophy.success_probability_target)
+    return target is not None and isinstance(target, (int, float)) and target > 0
+
+
 GATED_FIELDS: dict[str, str] = {
     "housing.mortgage_balance": "housing.status",
     "housing.mortgage_rate": "housing.status",
@@ -61,4 +67,5 @@ EXCLUSION_CHECKS: dict[str, Any] = {
     "accounts.employer_match_percent": should_skip_employer_match,
     "accounts.employee_contribution_percent": should_skip_employer_match,
     "accounts.employer_non_elective_percent": should_skip_employer_match,
+    "monte_carlo.required_success_rate": should_skip_monte_carlo_success_rate,
 }

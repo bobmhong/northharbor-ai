@@ -29,6 +29,7 @@ Building core infrastructure and baseline capabilities.
 **Interview & Planning**
 
 - [ ] Complete interview question set (assets, Social Security, pensions)
+- [ ] Revisit and tune confidence behavior — review thresholds, confirmation loop prevention, and per-field confidence calibration for the AI extractor and policy engine
 - [ ] Multi-scenario comparison (what-if analysis)
 
 **Output & Export**

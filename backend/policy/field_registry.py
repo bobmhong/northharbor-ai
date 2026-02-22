@@ -175,6 +175,12 @@ CONFIRM_TEMPLATES: dict[str, str] = {
     "spending.retirement_monthly_real": (
         "I have your expected monthly retirement spending as ${value:,}. Correct?"
     ),
+    "retirement_philosophy.success_probability_target": (
+        "I have your plan success target set to {value:.0%}. "
+        "This means your plan should have at least a {value:.0%} chance of "
+        "lasting through retirement without running out of money. "
+        "Does that sound right?"
+    ),
 }
 
 OPTIONAL_TEMPLATES: dict[str, str] = {

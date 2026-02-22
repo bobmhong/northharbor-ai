@@ -2,31 +2,41 @@ import { useRef, useState, useEffect, type FormEvent, useMemo } from "react";
 import Typeahead from "../ui/Typeahead";
 import { getStatesForAutocomplete, getCitiesForState } from "../../data/locations";
 
-type InputMode = "text" | "state" | "city" | "income" | "legacy" | "balance" | "spending" | "percentage" | "success_rate" | "claiming_age" | "employer_plan" | "employer_match" | "employee_contribution";
+type InputMode = "text" | "state" | "city" | "income" | "legacy" | "balance" | "spending" | "percentage" | "success_rate" | "claiming_age" | "employer_plan" | "employer_match" | "employee_contribution" | "ss_benefit" | "retirement_age";
 
 const INCOME_SUGGESTIONS = [
+  { value: "25000", label: "$25,000" },
+  { value: "35000", label: "$35,000" },
   { value: "50000", label: "$50,000" },
   { value: "75000", label: "$75,000" },
   { value: "100000", label: "$100,000" },
   { value: "125000", label: "$125,000" },
   { value: "150000", label: "$150,000" },
-  { value: "175000", label: "$175,000" },
   { value: "200000", label: "$200,000" },
   { value: "250000", label: "$250,000" },
   { value: "300000", label: "$300,000" },
+  { value: "400000", label: "$400,000" },
+  { value: "500000", label: "$500,000" },
+  { value: "750000", label: "$750,000" },
+  { value: "1000000", label: "$1,000,000" },
 ];
 
 const LEGACY_SUGGESTIONS = [
   { value: "0", label: "$0 (no legacy goal)" },
+  { value: "50000", label: "$50,000" },
   { value: "100000", label: "$100,000" },
   { value: "250000", label: "$250,000" },
   { value: "500000", label: "$500,000" },
   { value: "750000", label: "$750,000" },
   { value: "1000000", label: "$1,000,000" },
   { value: "2000000", label: "$2,000,000" },
+  { value: "5000000", label: "$5,000,000" },
 ];
 
 const BALANCE_SUGGESTIONS = [
+  { value: "0", label: "$0 (just starting)" },
+  { value: "10000", label: "$10,000" },
+  { value: "25000", label: "$25,000" },
   { value: "50000", label: "$50,000" },
   { value: "100000", label: "$100,000" },
   { value: "250000", label: "$250,000" },
@@ -35,21 +45,36 @@ const BALANCE_SUGGESTIONS = [
   { value: "1000000", label: "$1,000,000" },
   { value: "1500000", label: "$1,500,000" },
   { value: "2000000", label: "$2,000,000" },
-  { value: "2500000", label: "$2,500,000" },
   { value: "3000000", label: "$3,000,000" },
-  { value: "4000000", label: "$4,000,000" },
   { value: "5000000", label: "$5,000,000" },
+  { value: "7500000", label: "$7,500,000" },
+  { value: "10000000", label: "$10,000,000" },
 ];
 
 const SPENDING_SUGGESTIONS = [
+  { value: "2000", label: "$2,000/month" },
   { value: "3000", label: "$3,000/month" },
   { value: "4000", label: "$4,000/month" },
   { value: "5000", label: "$5,000/month" },
   { value: "6000", label: "$6,000/month" },
   { value: "7500", label: "$7,500/month" },
   { value: "10000", label: "$10,000/month" },
-  { value: "12500", label: "$12,500/month" },
   { value: "15000", label: "$15,000/month" },
+  { value: "20000", label: "$20,000/month" },
+  { value: "30000", label: "$30,000/month" },
+];
+
+const SS_BENEFIT_SUGGESTIONS = [
+  { value: "500", label: "$500/month" },
+  { value: "1000", label: "$1,000/month" },
+  { value: "1500", label: "$1,500/month" },
+  { value: "2000", label: "$2,000/month" },
+  { value: "2500", label: "$2,500/month" },
+  { value: "3000", label: "$3,000/month" },
+  { value: "3500", label: "$3,500/month" },
+  { value: "4000", label: "$4,000/month" },
+  { value: "4500", label: "$4,500/month" },
+  { value: "5000", label: "$5,000/month" },
 ];
 
 interface EditingState {
@@ -173,9 +198,14 @@ function detectInputMode(message?: string, context?: string, targetField?: strin
       return { mode: "balance" };
     case "spending.retirement_monthly_real":
       return { mode: "spending" };
+    case "client.retirement_window":
+      return { mode: "retirement_age" };
     case "retirement_philosophy.success_probability_target":
     case "monte_carlo.required_success_rate":
       return { mode: "success_rate" };
+    case "social_security.combined_at_67_monthly":
+    case "social_security.combined_at_70_monthly":
+      return { mode: "ss_benefit" };
     case "social_security.claiming_preference":
       return { mode: "claiming_age" };
     case "accounts.has_employer_plan":
@@ -204,6 +234,13 @@ function detectInputMode(message?: string, context?: string, targetField?: strin
       lastSentence.includes("confidence level") || lastSentence.includes("plan success") ||
       (lastSentence.includes("success") && lastSentence.includes("%"))) {
     return { mode: "success_rate" };
+  }
+
+  // Social Security benefit amount detection
+  if (lastSentence.includes("social security benefit") || (lastSentence.includes("social security") && lastSentence.includes("monthly")) ||
+      lastSentence.match(/benefit at age\s+\d+/) || lastSentence.includes("expected benefit") ||
+      (lastSentence.includes("social security") && (lastSentence.includes("67") || lastSentence.includes("70")) && !lastSentence.includes("claim"))) {
+    return { mode: "ss_benefit" };
   }
 
   // Social Security claiming age detection
@@ -262,6 +299,13 @@ function detectInputMode(message?: string, context?: string, targetField?: strin
       lastSentence.includes("your city") || (lastSentence.includes("city") && lastSentence.includes("?"))) {
     const stateMatch = fullContext.match(/(?:in|from|live in|reside in)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/);
     return { mode: "city", stateContext: stateMatch?.[1] };
+  }
+  
+  // Retirement age detection
+  if (lastSentence.includes("retirement age") || (lastSentence.includes("retire") && lastSentence.includes("age")) ||
+      lastSentence.includes("when would you like to retire") || lastSentence.includes("plan to retire") ||
+      (lastSentence.includes("aiming for") && lastSentence.includes("retire"))) {
+    return { mode: "retirement_age" };
   }
   
   // Income detection - expanded patterns
@@ -324,6 +368,8 @@ export default function ChatInput({
   onSubmitEdit,
 }: ChatInputProps) {
   const [value, setValue] = useState("");
+  const [retireAgeMin, setRetireAgeMin] = useState(65);
+  const [retireAgeMax, setRetireAgeMax] = useState(67);
   const [claimTipOpen, setClaimTipOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const claimTipRef = useRef<HTMLDivElement>(null);
@@ -404,12 +450,29 @@ export default function ChatInput({
       prevMode === "success_rate" ||
       prevMode === "claiming_age" ||
       prevMode === "employer_match" ||
-      prevMode === "employee_contribution";
+      prevMode === "employee_contribution" ||
+      prevMode === "retirement_age";
     if (cameFromSlider && mode === "text") {
       setValue("");
     }
 
-    if (mode === "percentage") {
+    if (mode === "retirement_age") {
+      const raw = (currentTargetValue || "").trim();
+      const rangeMatch = raw.match(/(\d{2})\D+(\d{2})/);
+      if (rangeMatch) {
+        setRetireAgeMin(Math.max(50, Math.min(80, parseInt(rangeMatch[1], 10))));
+        setRetireAgeMax(Math.max(50, Math.min(80, parseInt(rangeMatch[2], 10))));
+      } else {
+        const single = parseNumericValue(raw);
+        if (single && single >= 50 && single <= 80) {
+          setRetireAgeMin(Math.round(single));
+          setRetireAgeMax(Math.round(single));
+        } else {
+          setRetireAgeMin(65);
+          setRetireAgeMax(67);
+        }
+      }
+    } else if (mode === "percentage") {
       setValue("6");
     } else if (mode === "success_rate") {
       setValue(defaultSuccessRate);
@@ -457,7 +520,7 @@ export default function ChatInput({
   // Handle Enter key to submit default values for slider/button modes
   useEffect(() => {
     // Only handle for modes that don't have a standard form submit
-    const enterModes = ["employer_plan", "employer_match", "employee_contribution", "percentage", "success_rate", "claiming_age"];
+    const enterModes = ["employer_plan", "employer_match", "employee_contribution", "percentage", "success_rate", "claiming_age", "retirement_age"];
     if (!enterModes.includes(mode)) return;
     if (disabled) return;
     
@@ -487,6 +550,10 @@ export default function ChatInput({
         submitValue = `${value || defaultSuccessRate}%`;
       } else if (mode === "claiming_age") {
         submitValue = `${value || defaultClaimingAge}`;
+      } else if (mode === "retirement_age") {
+        submitValue = retireAgeMin === retireAgeMax
+          ? `${retireAgeMin}`
+          : `${retireAgeMin} to ${retireAgeMax}`;
       }
       
       if (editing && onSubmitEdit) {
@@ -518,7 +585,7 @@ export default function ChatInput({
       return;
     }
     
-    const isMoneyMode = mode === "income" || mode === "legacy" || mode === "balance" || mode === "spending";
+    const isMoneyMode = mode === "income" || mode === "legacy" || mode === "balance" || mode === "spending" || mode === "ss_benefit";
     const formattedValue = isMoneyMode ? formatDollarValue(trimmed) : trimmed;
     onSend(formattedValue);
     setValue("");
@@ -540,7 +607,7 @@ export default function ChatInput({
 
   function handleTypeaheadSelect(selectedValue: string) {
     if (disabled) return;
-    const isMoneyMode = mode === "income" || mode === "legacy" || mode === "balance" || mode === "spending";
+    const isMoneyMode = mode === "income" || mode === "legacy" || mode === "balance" || mode === "spending" || mode === "ss_benefit";
     const formattedValue = isMoneyMode ? formatDollarValue(selectedValue) : selectedValue;
     if (editing && onSubmitEdit) {
       onSubmitEdit(editing.index, formattedValue);
@@ -755,6 +822,147 @@ export default function ChatInput({
             {submitButtonText}
           </button>
         </form>
+      </div>
+    );
+  }
+
+  if (mode === "ss_benefit") {
+    return (
+      <div>
+        {editingHeader}
+        <form onSubmit={handleSubmit} className="flex gap-2 sm:gap-3">
+          <div className="flex-1">
+            <Typeahead
+              options={SS_BENEFIT_SUGGESTIONS}
+              value={value}
+              onChange={setValue}
+              onSelect={handleTypeaheadSelect}
+              placeholder="Enter monthly benefit or select..."
+              allowCustom={true}
+              customLabel="Use this amount"
+              disabled={disabled}
+              autoFocus
+            />
+          </div>
+          {cancelButton}
+          <button
+            type="submit"
+            disabled={isSubmitDisabled}
+            className="btn-primary shrink-0"
+          >
+            {submitButtonText}
+          </button>
+        </form>
+      </div>
+    );
+  }
+
+  if (mode === "retirement_age") {
+    const isSingleAge = retireAgeMin === retireAgeMax;
+    const displayLabel = isSingleAge
+      ? `Age ${retireAgeMin}`
+      : `Ages ${retireAgeMin} – ${retireAgeMax}`;
+
+    const handleMinChange = (v: number) => {
+      const clamped = Math.max(50, Math.min(80, v));
+      setRetireAgeMin(clamped);
+      if (clamped > retireAgeMax) setRetireAgeMax(clamped);
+    };
+    const handleMaxChange = (v: number) => {
+      const clamped = Math.max(50, Math.min(80, v));
+      setRetireAgeMax(clamped);
+      if (clamped < retireAgeMin) setRetireAgeMin(clamped);
+    };
+
+    const submitRetirementAge = () => {
+      if (disabled) return;
+      const submitValue = isSingleAge
+        ? `${retireAgeMin}`
+        : `${retireAgeMin} to ${retireAgeMax}`;
+      if (editing && onSubmitEdit) {
+        onSubmitEdit(editing.index, submitValue);
+      } else {
+        onSend(submitValue);
+      }
+    };
+
+    return (
+      <div>
+        {editingHeader}
+        <div className="space-y-3">
+          <div className="text-center">
+            <span className="text-2xl font-bold text-harbor-700">{displayLabel}</span>
+          </div>
+          <div className="text-center text-xs text-sage-600">
+            {isSingleAge
+              ? "Drag the sliders apart to set a range, or pick a single target age."
+              : `A ${retireAgeMax - retireAgeMin}-year window gives you flexibility on timing.`}
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center gap-3">
+              <label className="text-xs text-sage-600 w-14 text-right shrink-0">Earliest</label>
+              <input
+                type="range"
+                min="50"
+                max="80"
+                value={retireAgeMin}
+                onChange={(e) => handleMinChange(parseInt(e.target.value, 10))}
+                disabled={disabled}
+                className="flex-1 h-2 bg-sage-200 rounded-lg appearance-none cursor-pointer accent-harbor-500"
+                aria-label="Earliest retirement age"
+              />
+              <input
+                type="number"
+                min="50"
+                max="80"
+                value={retireAgeMin}
+                onChange={(e) => handleMinChange(parseInt(e.target.value, 10) || 50)}
+                disabled={disabled}
+                className="input-field w-16 text-center text-sm"
+                aria-label="Earliest retirement age value"
+              />
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="text-xs text-sage-600 w-14 text-right shrink-0">Latest</label>
+              <input
+                type="range"
+                min="50"
+                max="80"
+                value={retireAgeMax}
+                onChange={(e) => handleMaxChange(parseInt(e.target.value, 10))}
+                disabled={disabled}
+                className="flex-1 h-2 bg-sage-200 rounded-lg appearance-none cursor-pointer accent-harbor-500"
+                aria-label="Latest retirement age"
+              />
+              <input
+                type="number"
+                min="50"
+                max="80"
+                value={retireAgeMax}
+                onChange={(e) => handleMaxChange(parseInt(e.target.value, 10) || 50)}
+                disabled={disabled}
+                className="input-field w-16 text-center text-sm"
+                aria-label="Latest retirement age value"
+              />
+            </div>
+          </div>
+          <div className="flex justify-between text-xs text-sage-500 px-[4.75rem]">
+            <span>50</span>
+            <span>65</span>
+            <span>80</span>
+          </div>
+          <div className="flex gap-2 sm:gap-3">
+            {cancelButton}
+            <button
+              type="button"
+              onClick={submitRetirementAge}
+              disabled={editing ? disabled : disabled}
+              className={editing ? "btn-primary flex-1" : "btn-primary w-full"}
+            >
+              {submitButtonText}
+            </button>
+          </div>
+        </div>
       </div>
     );
   }

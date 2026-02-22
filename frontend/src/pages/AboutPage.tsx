@@ -61,10 +61,9 @@ export default function AboutPage() {
 
       <section className="card p-6 sm:p-8 max-w-3xl mx-auto">
         <p className="text-sage-700 leading-relaxed">
-          Retirement planning shouldn't feel overwhelming. NorthHarbor Sage
-          walks you through the process conversationally, builds a personalized
-          plan based on your goals, and helps you understand your options with
-          clear, probability-based projections.
+          NorthHarbor Sage replaces spreadsheets and guesswork with a
+          guided conversation, a personalized plan, and probability-based
+          projections you can actually understand.
         </p>
       </section>
 

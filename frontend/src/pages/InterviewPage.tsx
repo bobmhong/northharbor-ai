@@ -35,6 +35,11 @@ function extractFieldName(question: string | undefined): string {
       q.includes("monte carlo") || q.includes("probability of success") ||
       q.includes("confidence level") || q.includes("plan success")) return "success rate";
 
+  if (q.includes("social security benefit") || q.includes("expected benefit") ||
+      (q.includes("social security") && (q.includes("67") || q.includes("70")) && !q.includes("claim"))) {
+    return "Social Security benefit";
+  }
+
   if (q.includes("claim social security") || q.includes("claiming social security") ||
       q.includes("start claiming social security") || q.includes("claiming age")) {
     return "Social Security claiming age";
@@ -63,6 +68,8 @@ function fieldLabelFromPath(fieldPath?: string | null): string | undefined {
       return "name";
     case "client.birth_year":
       return "birth year";
+    case "client.retirement_window":
+      return "target retirement age";
     case "location.state":
       return "state";
     case "location.city":
@@ -83,6 +90,10 @@ function fieldLabelFromPath(fieldPath?: string | null): string | undefined {
       return "savings rate";
     case "spending.retirement_monthly_real":
       return "monthly spending";
+    case "social_security.combined_at_67_monthly":
+      return "Social Security benefit at 67";
+    case "social_security.combined_at_70_monthly":
+      return "Social Security benefit at 70";
     case "social_security.claiming_preference":
       return "Social Security claiming age";
     case "retirement_philosophy.success_probability_target":
@@ -108,7 +119,7 @@ function formatCorrectionValue(value: string, fieldName: string): string {
     return trimmed;
   }
   
-  const monetaryFields = ["annual income", "legacy goal", "retirement balance", "monthly spending"];
+  const monetaryFields = ["annual income", "legacy goal", "retirement balance", "monthly spending", "Social Security benefit", "Social Security benefit at 67", "Social Security benefit at 70"];
   if (monetaryFields.includes(fieldName)) {
     const num = parseInt(trimmed.replace(/[$,]/g, ""), 10);
     if (!isNaN(num)) return "$" + num.toLocaleString("en-US");
@@ -144,6 +155,18 @@ function buildCorrectionMessage(fieldName: string, formattedValue: string): stri
 function parseRawFieldValue(fieldPath: string, displayValue: string): unknown {
   const trimmed = displayValue.trim();
 
+  if (fieldPath === "client.retirement_window") {
+    const rangeMatch = trimmed.match(/(\d{2})\s*(?:to|-|–)\s*(\d{2})/);
+    if (rangeMatch) {
+      return { min: parseInt(rangeMatch[1], 10), max: parseInt(rangeMatch[2], 10) };
+    }
+    const single = parseInt(trimmed, 10);
+    if (!isNaN(single) && single >= 40 && single <= 80) {
+      return { min: single, max: single };
+    }
+    return trimmed;
+  }
+
   const booleanFields = ["accounts.has_employer_plan"];
   if (booleanFields.includes(fieldPath)) {
     const lower = trimmed.toLowerCase();
@@ -157,6 +180,8 @@ function parseRawFieldValue(fieldPath: string, displayValue: string): unknown {
     "retirement_philosophy.legacy_goal_total_real",
     "accounts.retirement_balance",
     "spending.retirement_monthly_real",
+    "social_security.combined_at_67_monthly",
+    "social_security.combined_at_70_monthly",
     "client.birth_year",
   ];
   if (integerFields.includes(fieldPath)) {

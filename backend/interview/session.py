@@ -409,12 +409,16 @@ def _invalid_input_feedback(
 
 
 def _client_friendly_ack(
-    applied_paths: list[str], schema: CanonicalPlanSchema
+    applied_paths: list[str],
+    schema: CanonicalPlanSchema,
+    *,
+    previously_populated: set[str] | None = None,
 ) -> str:
     if not applied_paths:
         return "Thanks for that."
 
-    if "client.name" in applied_paths:
+    newly_set = previously_populated is None
+    if "client.name" in applied_paths and (newly_set or "client.name" not in previously_populated):
         name_value = _resolve_path_value(schema, "client.name")
         if isinstance(name_value, str) and name_value.strip():
             return f"Hi {name_value}, nice to meet you."
@@ -466,6 +470,34 @@ def _resolve_path_value(schema: CanonicalPlanSchema, path: str) -> Any:
 def _is_affirmative(message: str) -> bool:
     normalized = " ".join(message.strip().lower().split())
     return normalized in _AFFIRMATIVE_REPLIES
+
+
+_LINKED_FIELDS: list[tuple[str, str]] = [
+    ("retirement_philosophy.success_probability_target", "monte_carlo.required_success_rate"),
+]
+
+
+def _sync_linked_fields(schema: CanonicalPlanSchema) -> tuple[CanonicalPlanSchema, PatchResult]:
+    """Copy values between fields that represent the same concept."""
+    patches: list[PatchOp] = []
+    for source, target in _LINKED_FIELDS:
+        src_val = _resolve_path_value(schema, source)
+        tgt_val = _resolve_path_value(schema, target)
+        if src_val is not None and (tgt_val is None or tgt_val == 0):
+            patches.append(PatchOp(op="set", path=target, value=src_val, confidence=1.0))
+    if patches:
+        return apply_patches(schema, patches)
+    return schema, PatchResult(applied=[], rejected=[], schema_snapshot_id="", warnings=[])
+
+
+def _populated_paths(schema: CanonicalPlanSchema, paths: list[str]) -> set[str]:
+    """Return the subset of *paths* that currently have a meaningful value."""
+    populated: set[str] = set()
+    for p in paths:
+        val = _resolve_path_value(schema, p)
+        if val is not None and val != 0 and val != "":
+            populated.add(p)
+    return populated
 
 
 class InterviewSession:
@@ -520,6 +552,9 @@ class InterviewSession:
             InterviewMessage(role="user", content=user_message)
         )
 
+        ack_fields = ["client.name"]
+        pre_populated = _populated_paths(self.schema, ack_fields)
+
         try:
             updated_schema, patch_result, decision = await extract_and_apply(
                 user_message,
@@ -547,14 +582,16 @@ class InterviewSession:
             if fallback_patch is not None:
                 updated_schema, fallback_result = apply_patches(updated_schema, [fallback_patch])
                 patch_result = _merge_patch_results(patch_result, fallback_result)
-                decision = select_next_question(updated_schema)
+
+        updated_schema, _ = _sync_linked_fields(updated_schema)
+        decision = select_next_question(updated_schema)
         self.schema = updated_schema
 
         if decision.interview_complete:
             reply = completion_message()
         elif patch_result.applied:
             applied_paths = [p.path for p in patch_result.applied]
-            reply = _client_friendly_ack(applied_paths, updated_schema)
+            reply = _client_friendly_ack(applied_paths, updated_schema, previously_populated=pre_populated)
             if decision.next_question:
                 reply += f"\n\n{decision.next_question}"
         elif patch_result.rejected:

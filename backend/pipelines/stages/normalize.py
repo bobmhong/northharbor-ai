@@ -84,7 +84,8 @@ def normalize_inputs(schema: CanonicalPlanSchema) -> dict[str, Any]:
         "longevity_age": int(_pf_val(mc.horizon_age, 95)),
         "legacy_floor": float(_pf_val(mc.legacy_floor, 0)),
         "required_success_probability": float(
-            _pf_val(mc.required_success_rate, 0.95)
+            _pf_val(mc.required_success_rate)
+            or _pf_val(schema.retirement_philosophy.success_probability_target, 0.95)
         ),
         "simulation_count": 10_000,
     }

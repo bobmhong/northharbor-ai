@@ -85,6 +85,17 @@ def _resolve_parent(
     return current, segments[-1]
 
 
+def _effective_confidence(
+    existing: Any, patch: PatchOp
+) -> float:
+    """Return the confidence to store, preserving higher confidence for unchanged values."""
+    if not isinstance(existing, ProvenanceField):
+        return patch.confidence
+    if existing.value == patch.value and existing.confidence > patch.confidence:
+        return existing.confidence
+    return patch.confidence
+
+
 def _apply_set(parent: Any, key: str, patch: PatchOp) -> None:
     if isinstance(parent, BaseModel):
         cls_fields = type(parent).model_fields
@@ -92,19 +103,23 @@ def _apply_set(parent: Any, key: str, patch: PatchOp) -> None:
             raise ValueError(f"Unknown field '{key}'")
         annotation = cls_fields[key].annotation
         if _is_provenance_annotation(annotation):
+            existing = getattr(parent, key, None)
+            confidence = _effective_confidence(existing, patch)
             new_pf = ProvenanceField(
                 value=patch.value,
                 source=patch.source,
-                confidence=patch.confidence,
+                confidence=confidence,
             )
             object.__setattr__(parent, key, new_pf)
         else:
             object.__setattr__(parent, key, patch.value)
     elif isinstance(parent, dict):
+        existing = parent.get(key)
+        confidence = _effective_confidence(existing, patch)
         parent[key] = ProvenanceField(
             value=patch.value,
             source=patch.source,
-            confidence=patch.confidence,
+            confidence=confidence,
         )
     else:
         raise ValueError(
