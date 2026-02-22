@@ -161,7 +161,8 @@ tasks:
 
         backend_pid=""
         frontend_pid=""
-        for _ in 1 2 3 4 5 6 7 8 9 10; do
+        max_wait=30
+        for i in $(seq 1 "$max_wait"); do
           if [ -z "$backend_pid" ]; then
             backend_pid="$(lsof -t -iTCP:{{.BACKEND_PORT}} -sTCP:LISTEN | sed -n '1p' || true)"
           fi
