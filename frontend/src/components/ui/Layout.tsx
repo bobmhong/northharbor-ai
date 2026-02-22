@@ -1,15 +1,12 @@
 import { useEffect, useState } from "react";
-import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, Outlet, useLocation } from "react-router-dom";
 import { cn } from "../../lib/utils";
 import { usePlan, usePlans, useUpdateScenarioName } from "../../api/hooks";
-import { useInterviewStore } from "../../stores/interviewStore";
 import EditScenarioModal from "./EditScenarioModal";
-import ConfirmModal from "./ConfirmModal";
 import logoCropped from "../../../../logo-cropped.jpeg";
 
 const NAV_ITEMS = [
   { path: "/plans", label: "Plans" },
-  { path: "/interview", label: "New Interview" },
 ];
 
 const BREADCRUMB_MAP: Record<string, { label: string; parent?: string }> = {
@@ -54,16 +51,11 @@ function extractPlanId(pathname: string, search: string): string | undefined {
 
 export default function Layout() {
   const location = useLocation();
-  const navigate = useNavigate();
   const breadcrumbs = getBreadcrumbs(location.pathname);
   const [showEditScenario, setShowEditScenario] = useState(false);
-  const [showNewInterviewConfirm, setShowNewInterviewConfirm] = useState(false);
-  
-  const { sessionId, isComplete, planId: activeInterviewPlanId, reset: resetInterview } = useInterviewStore();
-  const hasActiveInterview = sessionId !== null && !isComplete;
   
   const planId = extractPlanId(location.pathname, location.search);
-  const { data: plan, refetch: refetchPlan } = usePlan(planId);
+  const { data: plan } = usePlan(planId);
   const { data: allPlans } = usePlans();
   const updateScenarioName = useUpdateScenarioName();
   
@@ -87,26 +79,6 @@ export default function Layout() {
     }
   }
 
-  function handleNewInterviewClick(e: React.MouseEvent) {
-    if (hasActiveInterview) {
-      e.preventDefault();
-      setShowNewInterviewConfirm(true);
-    }
-  }
-
-  function handleStartNewInterview() {
-    resetInterview();
-    setShowNewInterviewConfirm(false);
-    navigate("/interview");
-  }
-
-  function handleContinueInterview() {
-    setShowNewInterviewConfirm(false);
-    if (activeInterviewPlanId) {
-      navigate(`/interview?plan_id=${activeInterviewPlanId}`);
-    }
-  }
-
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
   }, [location.pathname]);
@@ -121,16 +93,6 @@ export default function Layout() {
         currentName={scenarioName || "Default"}
         isPending={updateScenarioName.isPending}
         error={updateScenarioName.error?.message}
-      />
-      <ConfirmModal
-        isOpen={showNewInterviewConfirm}
-        title="Interview in Progress"
-        message="You have an interview in progress. Would you like to continue where you left off, or start a completely new interview?"
-        confirmLabel="Start New"
-        cancelLabel="Continue Current"
-        onConfirm={handleStartNewInterview}
-        onCancel={handleContinueInterview}
-        variant="warning"
       />
       <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <header className="sticky top-0 z-50 header-gradient shrink-0">
@@ -158,7 +120,6 @@ export default function Layout() {
               <Link
                 key={item.path}
                 to={item.path}
-                onClick={item.path === "/interview" ? handleNewInterviewClick : undefined}
                 className={cn(
                   "relative rounded-lg sm:rounded-xl px-2.5 sm:px-4 py-2 text-xs sm:text-sm font-semibold transition-all duration-200",
                   location.pathname.startsWith(item.path)

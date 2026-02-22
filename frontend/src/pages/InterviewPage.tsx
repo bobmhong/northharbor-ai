@@ -8,6 +8,90 @@ import { api } from "../api/client";
 
 let startInterviewInFlight: Promise<void> | null = null;
 
+function extractFieldName(question: string | undefined): string {
+  if (!question) return "answer";
+  const q = question.toLowerCase();
+  
+  // Name - expanded patterns
+  if ((q.includes("name") && (q.includes("call you") || q.includes("your name") || q.includes("what's your") || q.includes("what is your"))) ||
+      q.includes("may i call you") || q.includes("should i call you") ||
+      (q.includes("name") && q.includes("?"))) return "name";
+  
+  // Location
+  if (q.includes("state") && (q.includes("live") || q.includes("reside") || q.includes("located"))) return "state";
+  if (q.includes("city") && (q.includes("live") || q.includes("reside") || q.includes("located"))) return "city";
+  
+  // Age
+  if (q.includes("retire") && (q.includes("age") || q.includes("when") || q.includes("plan to"))) return "target retirement age";
+  if (q.includes("current age") || q.includes("old are you") || q.includes("your age")) return "age";
+  
+  // Income
+  if (q.includes("income") || q.includes("salary") || q.includes("earn") || q.includes("make per year")) return "annual income";
+  
+  // Legacy
+  if (q.includes("legacy") || q.includes("leave behind") || q.includes("inheritance") || q.includes("estate")) return "legacy goal";
+  
+  // Balance
+  if (q.includes("balance") || q.includes("saved") || q.includes("retirement account") || q.includes("401") || q.includes("ira") || q.includes("savings")) return "retirement balance";
+  
+  // Spending
+  if (q.includes("spend") || q.includes("expenses") || q.includes("monthly") || q.includes("budget")) return "monthly spending";
+  
+  // Success rate / Monte Carlo
+  if (q.includes("success rate") || q.includes("success probability") || 
+      q.includes("monte carlo") || q.includes("probability of success") ||
+      q.includes("confidence level") || q.includes("plan success")) return "success rate";
+  
+  // Savings rate
+  if (q.includes("savings rate") || q.includes("percentage") || q.includes("% of your income") || q.includes("contribute") || q.includes("saving")) return "savings rate";
+  
+  return "answer";
+}
+
+function formatCorrectionValue(value: string, fieldName: string): string {
+  const trimmed = value.trim();
+  
+  // Text fields that should never be formatted - return as-is
+  const textFields = ["name", "state", "city"];
+  if (textFields.includes(fieldName)) {
+    return trimmed;
+  }
+  
+  // Percentage fields or values ending in %
+  if (fieldName === "savings rate" || fieldName === "success rate" || trimmed.match(/^\d+%$/)) {
+    const num = parseInt(trimmed.replace(/%$/, ""), 10);
+    if (!isNaN(num)) return `${num}%`;
+    return trimmed;
+  }
+  
+  // Monetary fields
+  const monetaryFields = ["annual income", "legacy goal", "retirement balance", "monthly spending"];
+  if (monetaryFields.includes(fieldName)) {
+    const num = parseInt(trimmed.replace(/[$,]/g, ""), 10);
+    if (!isNaN(num)) return "$" + num.toLocaleString("en-US");
+    return trimmed;
+  }
+  
+  // Age fields - just return as-is
+  if (fieldName === "age" || fieldName === "target retirement age") {
+    return trimmed;
+  }
+  
+  // Auto-detect: if value looks like a large number or has $ sign, format as currency
+  const numericValue = trimmed.replace(/[$,]/g, "");
+  if (trimmed.startsWith("$") || (numericValue.match(/^\d+$/) && parseInt(numericValue, 10) >= 1000)) {
+    const num = parseInt(numericValue, 10);
+    if (!isNaN(num)) return "$" + num.toLocaleString("en-US");
+  }
+  
+  return trimmed;
+}
+
+function buildCorrectionMessage(fieldName: string, formattedValue: string): string {
+  const field = fieldName === "answer" ? "response" : fieldName;
+  return `Got it! I've updated your ${field} to ${formattedValue}.`;
+}
+
 export default function InterviewPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -27,7 +111,7 @@ export default function InterviewPage() {
     setSession,
     addMessage,
     setMessages,
-    updateMessage,
+    markMessageUpdated,
     setComplete,
     setLoading,
     setResumed,
@@ -111,7 +195,9 @@ export default function InterviewPage() {
         addMessage("assistant", res.message);
         if (res.interview_complete) setComplete(true);
         
+        // Invalidate plan data to refresh header (name, scenario, etc.)
         queryClient.invalidateQueries({ queryKey: ["plan", planId || planIdParam] });
+        queryClient.invalidateQueries({ queryKey: ["plans"] });
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : "";
         if (errorMessage.toLowerCase().includes("session not found")) {
@@ -148,9 +234,17 @@ export default function InterviewPage() {
 
   const handleEditMessage = useCallback(
     (index: number, content: string) => {
-      setEditing({ index, originalContent: content });
+      // Find the preceding assistant message to determine the input mode
+      let precedingQuestion: string | undefined;
+      for (let i = index - 1; i >= 0; i--) {
+        if (messages[i]?.role === "assistant") {
+          precedingQuestion = messages[i].content;
+          break;
+        }
+      }
+      setEditing({ index, originalContent: content, precedingQuestion });
     },
-    [setEditing]
+    [setEditing, messages]
   );
 
   const handleCancelEdit = useCallback(() => {
@@ -159,19 +253,43 @@ export default function InterviewPage() {
 
   const handleSubmitEdit = useCallback(
     async (index: number, newContent: string) => {
-      setEditing(null);
-      updateMessage(index, newContent);
+      // Get the preceding question before clearing editing state
+      const precedingQuestion = editing?.precedingQuestion;
+      const fieldName = extractFieldName(precedingQuestion);
+      const formattedValue = formatCorrectionValue(newContent, fieldName);
+      const correctionMessage = buildCorrectionMessage(fieldName, formattedValue);
       
-      addMessage("assistant", `Got it, I've noted your updated answer: "${newContent}"`);
+      // Build update label (e.g., "Income update")
+      const updateLabel = fieldName === "answer" 
+        ? "Update"
+        : `${fieldName.charAt(0).toUpperCase() + fieldName.slice(1)} update`;
+      
+      setEditing(null);
+      
+      // Calculate the index where the new user message will be added
+      const newMessageIndex = messages.length;
+      
+      // Mark the original message as updated, pointing to the new message
+      markMessageUpdated(index, newMessageIndex);
+      
+      // Add user's correction as a new chat bubble with update metadata
+      addMessage("user", formattedValue, {
+        isUpdate: true,
+        updateLabel,
+        originalIndex: index,
+      });
+      addMessage("assistant", correctionMessage);
       
       if (sessionId) {
         setLoading(true);
         try {
-          const res = await api.respond(sessionId, `[Correction] My previous answer should be: ${newContent}`);
+          const res = await api.respond(sessionId, `[Correction] My ${fieldName} should be: ${formattedValue}`);
           addMessage("assistant", res.message);
           if (res.interview_complete) setComplete(true);
           
+          // Invalidate plan data to refresh header (name, scenario, etc.)
           queryClient.invalidateQueries({ queryKey: ["plan", planId || planIdParam] });
+          queryClient.invalidateQueries({ queryKey: ["plans"] });
         } catch {
           addMessage("assistant", "I've noted your correction. Let's continue.");
         } finally {
@@ -179,7 +297,7 @@ export default function InterviewPage() {
         }
       }
     },
-    [sessionId, planId, planIdParam, queryClient, updateMessage, addMessage, setLoading, setComplete, setEditing]
+    [sessionId, planId, planIdParam, queryClient, editing, messages.length, markMessageUpdated, addMessage, setLoading, setComplete, setEditing]
   );
 
   const handleSendWithEditDetection = useCallback(
@@ -194,7 +312,7 @@ export default function InterviewPage() {
         }
         if (lastUserIndex !== -1) {
           addMessage("user", message);
-          addMessage("assistant", "I understand you want to update a previous answer. Click the edit icon next to the answer you'd like to change, or tell me the corrected information directly.");
+          addMessage("assistant", "I understand you want to update a previous answer. Click the reply icon next to the answer you'd like to change, or tell me the corrected information directly.");
           return;
         }
       }
@@ -204,6 +322,20 @@ export default function InterviewPage() {
   );
 
   const inputHeight = editing ? 120 : isComplete ? 140 : 80;
+
+  const scrollToMessage = useCallback((targetIndex: number) => {
+    const container = chatContainerRef.current;
+    if (!container) return;
+    const targetElement = container.querySelector(`[data-message-index="${targetIndex}"]`);
+    if (targetElement) {
+      targetElement.scrollIntoView({ behavior: "smooth", block: "center" });
+      // Brief highlight effect
+      targetElement.classList.add("ring-2", "ring-harbor-400", "ring-offset-2");
+      setTimeout(() => {
+        targetElement.classList.remove("ring-2", "ring-harbor-400", "ring-offset-2");
+      }, 1500);
+    }
+  }, []);
 
   const lastAssistantMessage = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -247,7 +379,7 @@ export default function InterviewPage() {
                 </svg>
                 <span>
                   <span className="font-medium">This is your current plan.</span>
-                  {" "}You can scroll through your previous answers. Click the edit icon on any response to make changes.
+                  {" "}You can scroll through your previous answers. Click the reply icon on any response to make changes.
                 </span>
               </div>
             </div>
@@ -262,6 +394,10 @@ export default function InterviewPage() {
                 messageIndex={i}
                 onEdit={handleEditMessage}
                 isEditing={editing?.index === i}
+                updatedByIndex={msg.updatedByIndex}
+                isUpdate={msg.isUpdate}
+                updateLabel={msg.updateLabel}
+                onScrollToMessage={scrollToMessage}
               />
             ))}
             {isLoading && (
@@ -311,7 +447,7 @@ export default function InterviewPage() {
               </div>
               {isResumed && (
                 <p className="mt-2 text-xs text-sage-600 text-center">
-                  Click the edit icon next to any of your answers above to make changes.
+                  Click the reply icon next to any of your answers above to make changes.
                 </p>
               )}
             </div>

@@ -84,8 +84,13 @@ export function useDeletePlan() {
       planId: string;
       ownerId?: string;
     }) => api.deletePlan(planId, ownerId),
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
+      // Invalidate and remove all cached data for the deleted plan
       queryClient.invalidateQueries({ queryKey: ["plans"] });
+      queryClient.invalidateQueries({ queryKey: ["plan", variables.planId] });
+      queryClient.removeQueries({ queryKey: ["plan", variables.planId] });
+      // Also invalidate any pipeline results that might reference this plan
+      queryClient.invalidateQueries({ queryKey: ["pipeline"] });
     },
   });
 }

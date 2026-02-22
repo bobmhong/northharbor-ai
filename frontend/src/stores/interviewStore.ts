@@ -4,11 +4,16 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   timestamp: string;
+  updatedByIndex?: number;
+  isUpdate?: boolean;
+  updateLabel?: string;
+  originalIndex?: number;
 }
 
 interface EditingState {
   index: number;
   originalContent: string;
+  precedingQuestion?: string;
 }
 
 interface InterviewState {
@@ -21,9 +26,10 @@ interface InterviewState {
   editing: EditingState | null;
 
   setSession: (sessionId: string, planId: string) => void;
-  addMessage: (role: "user" | "assistant", content: string) => void;
+  addMessage: (role: "user" | "assistant", content: string, extra?: Partial<Message>) => void;
   setMessages: (messages: Message[]) => void;
   updateMessage: (index: number, content: string) => void;
+  markMessageUpdated: (originalIndex: number, updateIndex: number) => void;
   setComplete: (complete: boolean) => void;
   setLoading: (loading: boolean) => void;
   setResumed: (resumed: boolean) => void;
@@ -42,11 +48,11 @@ export const useInterviewStore = create<InterviewState>((set) => ({
 
   setSession: (sessionId, planId) => set({ sessionId, planId }),
 
-  addMessage: (role, content) =>
+  addMessage: (role, content, extra) =>
     set((state) => ({
       messages: [
         ...state.messages,
-        { role, content, timestamp: new Date().toISOString() },
+        { role, content, timestamp: new Date().toISOString(), ...extra },
       ],
     })),
 
@@ -56,6 +62,13 @@ export const useInterviewStore = create<InterviewState>((set) => ({
     set((state) => ({
       messages: state.messages.map((msg, i) =>
         i === index ? { ...msg, content, timestamp: new Date().toISOString() } : msg
+      ),
+    })),
+
+  markMessageUpdated: (originalIndex, updateIndex) =>
+    set((state) => ({
+      messages: state.messages.map((msg, i) =>
+        i === originalIndex ? { ...msg, updatedByIndex: updateIndex } : msg
       ),
     })),
 

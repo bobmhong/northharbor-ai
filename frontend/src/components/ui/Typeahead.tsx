@@ -189,7 +189,7 @@ export default function Typeahead({
       {isOpen && totalOptions > 0 && (
         <ul
           ref={listRef}
-          className="absolute z-50 bottom-full mb-2 max-h-60 w-full overflow-auto rounded-xl border border-sage-200 bg-white py-1 shadow-elevated"
+          className="absolute z-50 bottom-full mb-2 max-h-40 w-full overflow-auto rounded-xl border border-sage-200 bg-white py-1 shadow-elevated"
           role="listbox"
         >
           {filteredOptions.map((option, index) => (
