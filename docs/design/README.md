@@ -50,6 +50,7 @@ Use sequential numbering with descriptive names:
 | 001 | [Local MongoDB Option for Homelab Deployments](001-local-mongodb-homelab.md) | Draft | 2026-02-20 |
 | 002 | [Provider-Agnostic Auth with Cloudflare Access Option](002-provider-agnostic-auth-with-cloudflare-access.md) | Draft | 2026-02-20 |
 | 003 | [Async MongoDB Stores for Plans and Sessions](003-async-mongo-plan-session-stores.md) | Draft | 2026-02-21 |
+| 004 | [Client-Side Validation and Confidence Refactor](004-client-side-validation.md) | Draft | 2026-02-22 |
 
 <!-- Example:
 | 001 | [Interview Engine](001-interview-engine.md) | Implemented | 2026-02-20 |

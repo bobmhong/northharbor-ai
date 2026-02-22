@@ -467,6 +467,23 @@ def _resolve_path_value(schema: CanonicalPlanSchema, path: str) -> Any:
     return current
 
 
+def _resolve_provenance(schema: CanonicalPlanSchema, path: str) -> ProvenanceField | None:
+    """Walk a dot-delimited path, returning the ProvenanceField wrapper."""
+    current: Any = schema
+    for seg in path.split("."):
+        if hasattr(current, seg):
+            current = getattr(current, seg)
+        elif isinstance(current, dict):
+            current = current.get(seg)
+        else:
+            return None
+        if current is None:
+            return None
+    if isinstance(current, ProvenanceField):
+        return current
+    return None
+
+
 def _is_affirmative(message: str) -> bool:
     normalized = " ".join(message.strip().lower().split())
     return normalized in _AFFIRMATIVE_REPLIES
@@ -478,7 +495,6 @@ _LOW_CONFIDENCE_THRESHOLD = 0.7
 def _boost_low_confidence_applied(
     schema: CanonicalPlanSchema,
     patch_result: PatchResult,
-    target_field: str | None,
     user_message: str,
 ) -> CanonicalPlanSchema:
     """Boost confidence for just-applied fields if the deterministic parser can do better.
@@ -487,18 +503,24 @@ def _boost_low_confidence_applied(
     provides an unambiguous answer (e.g. "95%" from a slider).  The fallback
     parser is deterministic and can confidently parse the same value, so we
     use it as a confidence floor to avoid unnecessary confirmation loops.
+
+    Also handles affirmative replies ("yes", "correct", etc.) to confirmation
+    prompts by promoting the existing value to full confidence.
     """
-    if not target_field:
-        return schema
-    low_applied = [
-        p for p in patch_result.applied
-        if p.path == target_field and p.confidence < _LOW_CONFIDENCE_THRESHOLD
-    ]
-    if not low_applied:
-        return schema
-    boost = _fallback_patch_for_target(target_field, user_message)
-    if boost and boost.confidence >= _LOW_CONFIDENCE_THRESHOLD:
-        schema, _ = apply_patches(schema, [boost])
+    affirmative = _is_affirmative(user_message)
+    for p in patch_result.applied:
+        if p.confidence >= _LOW_CONFIDENCE_THRESHOLD:
+            continue
+        boost = _fallback_patch_for_target(p.path, user_message)
+        if boost and boost.confidence >= _LOW_CONFIDENCE_THRESHOLD:
+            schema, _ = apply_patches(schema, [boost])
+        elif affirmative:
+            existing = _resolve_path_value(schema, p.path)
+            if existing is not None:
+                schema, _ = apply_patches(
+                    schema,
+                    [PatchOp(op="set", path=p.path, value=existing, confidence=1.0)],
+                )
     return schema
 
 
@@ -508,13 +530,25 @@ _LINKED_FIELDS: list[tuple[str, str]] = [
 
 
 def _sync_linked_fields(schema: CanonicalPlanSchema) -> tuple[CanonicalPlanSchema, PatchResult]:
-    """Copy values between fields that represent the same concept."""
+    """Copy values between fields that represent the same concept.
+
+    Syncs source → target when the target is empty, the values have diverged,
+    or the target has lower confidence.  Uses the source's confidence so that
+    a confirmed source automatically promotes the linked target, preventing
+    duplicate confirmation prompts for the same concept.
+    """
     patches: list[PatchOp] = []
     for source, target in _LINKED_FIELDS:
         src_val = _resolve_path_value(schema, source)
+        if src_val is None:
+            continue
         tgt_val = _resolve_path_value(schema, target)
-        if src_val is not None and (tgt_val is None or tgt_val == 0):
-            patches.append(PatchOp(op="set", path=target, value=src_val, confidence=1.0))
+        tgt_prov = _resolve_provenance(schema, target)
+        src_prov = _resolve_provenance(schema, source)
+        src_conf = src_prov.confidence if src_prov else 0.0
+        tgt_conf = tgt_prov.confidence if tgt_prov else 0.0
+        if tgt_val is None or tgt_val == 0 or tgt_val != src_val or src_conf > tgt_conf:
+            patches.append(PatchOp(op="set", path=target, value=src_val, confidence=src_conf))
     if patches:
         return apply_patches(schema, patches)
     return schema, PatchResult(applied=[], rejected=[], schema_snapshot_id="", warnings=[])
@@ -616,7 +650,7 @@ class InterviewSession:
                 patch_result = _merge_patch_results(patch_result, fallback_result)
         else:
             updated_schema = _boost_low_confidence_applied(
-                updated_schema, patch_result, decision.target_field, user_message,
+                updated_schema, patch_result, user_message,
             )
 
         updated_schema, _ = _sync_linked_fields(updated_schema)

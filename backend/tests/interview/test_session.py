@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import json
 import unittest
 from datetime import datetime, timezone
 
 from backend.ai.extractor import StubLLMClient
-from backend.interview.session import InterviewSession
+from backend.interview.session import (
+    InterviewSession,
+    _boost_low_confidence_applied,
+    _sync_linked_fields,
+)
 from backend.schema.canonical import (
     AccountsProfile,
     CanonicalPlanSchema,
@@ -20,6 +25,7 @@ from backend.schema.canonical import (
     SocialSecurityProfile,
     SpendingProfile,
 )
+from backend.schema.patch_ops import PatchOp, PatchResult, apply_patches
 from backend.schema.provenance import FieldSource, ProvenanceField
 
 
@@ -173,3 +179,143 @@ class TestInterviewSessionFallback(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("future year", turn.assistant_message.lower())
         self.assertIn("birth year", turn.assistant_message.lower())
+
+
+class TestBoostLowConfidence(unittest.TestCase):
+    """Tests for _boost_low_confidence_applied."""
+
+    def _schema_with_low_confidence_target(self) -> CanonicalPlanSchema:
+        schema = _make_schema()
+        schema, _ = apply_patches(schema, [
+            PatchOp(
+                op="set",
+                path="retirement_philosophy.success_probability_target",
+                value=0.95,
+                confidence=0.4,
+            ),
+        ])
+        return schema
+
+    def test_boost_all_low_confidence_patches(self) -> None:
+        """Boost should apply to any low-confidence patch, not just a specific target."""
+        schema = self._schema_with_low_confidence_target()
+        patch_result = PatchResult(
+            applied=[
+                PatchOp(
+                    op="set",
+                    path="retirement_philosophy.success_probability_target",
+                    value=0.95,
+                    confidence=0.4,
+                ),
+            ],
+            rejected=[],
+            schema_snapshot_id="test",
+        )
+
+        boosted = _boost_low_confidence_applied(schema, patch_result, "95%")
+
+        self.assertGreaterEqual(
+            boosted.retirement_philosophy.success_probability_target.confidence,
+            0.7,
+        )
+
+    def test_boost_affirmative_reply(self) -> None:
+        """'yes' on a confirmation prompt should promote to full confidence."""
+        schema = self._schema_with_low_confidence_target()
+        patch_result = PatchResult(
+            applied=[
+                PatchOp(
+                    op="set",
+                    path="retirement_philosophy.success_probability_target",
+                    value=0.95,
+                    confidence=0.4,
+                ),
+            ],
+            rejected=[],
+            schema_snapshot_id="test",
+        )
+
+        boosted = _boost_low_confidence_applied(schema, patch_result, "yes")
+
+        self.assertEqual(
+            boosted.retirement_philosophy.success_probability_target.confidence,
+            1.0,
+        )
+
+    def test_skip_already_high_confidence(self) -> None:
+        """Patches at or above the threshold are left alone."""
+        schema = _make_schema()
+        schema, _ = apply_patches(schema, [
+            PatchOp(
+                op="set",
+                path="retirement_philosophy.success_probability_target",
+                value=0.90,
+                confidence=0.85,
+            ),
+        ])
+        patch_result = PatchResult(
+            applied=[
+                PatchOp(
+                    op="set",
+                    path="retirement_philosophy.success_probability_target",
+                    value=0.90,
+                    confidence=0.85,
+                ),
+            ],
+            rejected=[],
+            schema_snapshot_id="test",
+        )
+
+        boosted = _boost_low_confidence_applied(schema, patch_result, "yes")
+
+        self.assertEqual(
+            boosted.retirement_philosophy.success_probability_target.confidence,
+            0.85,
+        )
+
+
+class TestSyncLinkedFields(unittest.TestCase):
+    """Tests for _sync_linked_fields."""
+
+    def test_sync_when_target_empty(self) -> None:
+        schema = _make_schema()
+        schema, _ = apply_patches(schema, [
+            PatchOp(op="set", path="retirement_philosophy.success_probability_target",
+                    value=0.90, confidence=0.85),
+            PatchOp(op="remove", path="monte_carlo.required_success_rate"),
+        ])
+
+        synced, result = _sync_linked_fields(schema)
+
+        self.assertEqual(synced.monte_carlo.required_success_rate.value, 0.90)
+
+    def test_sync_promotes_confidence_to_target(self) -> None:
+        """When source has higher confidence, target should be updated."""
+        schema = _make_schema()
+        schema, _ = apply_patches(schema, [
+            PatchOp(op="set", path="retirement_philosophy.success_probability_target",
+                    value=0.90, confidence=1.0),
+            PatchOp(op="set", path="monte_carlo.required_success_rate",
+                    value=0.90, confidence=0.4),
+        ])
+
+        synced, _ = _sync_linked_fields(schema)
+
+        self.assertEqual(
+            synced.monte_carlo.required_success_rate.confidence,
+            1.0,
+        )
+
+    def test_sync_overrides_diverged_value(self) -> None:
+        """If LLM set different values for linked fields, source wins."""
+        schema = _make_schema()
+        schema, _ = apply_patches(schema, [
+            PatchOp(op="set", path="retirement_philosophy.success_probability_target",
+                    value=0.95, confidence=0.85),
+            PatchOp(op="set", path="monte_carlo.required_success_rate",
+                    value=0.80, confidence=0.85),
+        ])
+
+        synced, _ = _sync_linked_fields(schema)
+
+        self.assertEqual(synced.monte_carlo.required_success_rate.value, 0.95)
