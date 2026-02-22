@@ -1,0 +1,22 @@
+---
+description: Agents must clean up any test data or artifacts they create during debugging or development
+alwaysApply: true
+---
+
+# Agent Cleanup Policy
+
+## Test Data
+
+- **Never leave behind test data** created during debugging, development, or verification
+- If you create plans, records, files, or any other artifacts to test a change, delete them before finishing
+- If you run API calls (e.g. `curl`, `httpie`) that create entities in the running app, delete those entities afterward
+- Do not create plans, users, or other domain objects unless the user explicitly asks for them
+
+## Temporary Files
+
+- Remove any temporary or scratch files created during investigation
+- If you create a test script to verify behavior, delete it when done (unless the user asked for it)
+
+## Verification
+
+- Before finishing a task, confirm no orphaned test data remains in the running application or on disk
