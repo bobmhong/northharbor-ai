@@ -14,6 +14,14 @@ const STATUS_BADGES: Record<string, string> = {
   finalized: "badge-neutral",
 };
 
+const STATUS_LABELS: Record<string, string> = {
+  intake_in_progress: "Interview in Progress",
+  intake_complete: "Ready for Analysis",
+  analysis_ready: "Analysis Ready",
+  review: "In Review",
+  finalized: "Finalized",
+};
+
 interface PlanToDelete {
   planId: string;
   displayName: string;
@@ -174,26 +182,9 @@ export default function PlanListPage() {
                       STATUS_BADGES[plan.status] ?? "badge-neutral"
                     }`}
                   >
-                    {plan.status.replace(/_/g, " ")}
+                    {STATUS_LABELS[plan.status] ?? plan.status.replace(/_/g, " ")}
                   </span>
                 </div>
-                
-                {plan.status === "intake_in_progress" && (
-                  <div className="mt-3 flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700">
-                    <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span>Interview in progress — click to continue</span>
-                  </div>
-                )}
-                {plan.status === "intake_complete" && (
-                  <div className="mt-3 flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-700">
-                    <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span>Ready for analysis — click to run projections</span>
-                  </div>
-                )}
                 
                 <div className="mt-4 space-y-1 text-sm text-sage-500">
                   <p>Created {formatDate(plan.created_at)}</p>

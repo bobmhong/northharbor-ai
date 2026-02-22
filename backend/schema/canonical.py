@@ -160,6 +160,7 @@ class CanonicalPlanSchema(BaseModel):
     """
 
     schema_version: str = "1.0"
+    version: int = 1
     plan_id: str
     owner_id: str
     scenario_name: str = "Default"

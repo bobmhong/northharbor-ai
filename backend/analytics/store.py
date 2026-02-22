@@ -6,8 +6,7 @@ from dataclasses import asdict
 from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
 
-from pymongo.collection import Collection
-from pymongo.database import Database
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from backend.analytics.models import LLMCallMetric
 
@@ -57,22 +56,22 @@ class MongoLLMAnalyticsStore:
 
     COLLECTION = "llm_usage_events"
 
-    def __init__(self, db: Database[Any]) -> None:
-        self._col: Collection[Any] = db[self.COLLECTION]
+    def __init__(self, db: AsyncIOMotorDatabase) -> None:
+        self._col = db[self.COLLECTION]
 
-    def append(self, metric: LLMCallMetric) -> None:
-        self._col.insert_one(asdict(metric))
+    async def append(self, metric: LLMCallMetric) -> None:
+        await self._col.insert_one(asdict(metric))
 
-    def get_since(self, since: datetime) -> list[LLMCallMetric]:
-        docs = self._col.find({"timestamp": {"$gte": since}}).sort("timestamp", 1)
-        return [self._from_doc(doc) for doc in docs]
+    async def get_since(self, since: datetime) -> list[LLMCallMetric]:
+        cursor = self._col.find({"timestamp": {"$gte": since}}).sort("timestamp", 1)
+        return [self._from_doc(doc) async for doc in cursor]
 
-    def get_recent(self, limit: int = 10) -> list[LLMCallMetric]:
-        docs = self._col.find().sort("timestamp", -1).limit(limit)
-        return [self._from_doc(doc) for doc in docs]
+    async def get_recent(self, limit: int = 10) -> list[LLMCallMetric]:
+        cursor = self._col.find().sort("timestamp", -1).limit(limit)
+        return [self._from_doc(doc) async for doc in cursor]
 
-    def clear(self) -> None:
-        self._col.delete_many({})
+    async def clear(self) -> None:
+        await self._col.delete_many({})
 
     def ensure_indexes(self) -> None:
         self._col.create_index("timestamp")

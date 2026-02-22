@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from pymongo.database import Database
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from backend.auth.models import AuditEntry, UserProfile
 
@@ -15,18 +15,18 @@ class MongoDBUserProfileStore:
 
     COLLECTION = "user_profiles"
 
-    def __init__(self, db: Database[Any]) -> None:
+    def __init__(self, db: AsyncIOMotorDatabase) -> None:
         self._col = db[self.COLLECTION]
 
     async def get_by_sub(self, auth0_sub: str) -> UserProfile | None:
-        doc = self._col.find_one({"auth0_sub": auth0_sub})
+        doc = await self._col.find_one({"auth0_sub": auth0_sub})
         if doc is None:
             return None
         doc.pop("_id", None)
         return UserProfile.model_validate(doc)
 
     async def upsert(self, profile: UserProfile) -> None:
-        self._col.update_one(
+        await self._col.update_one(
             {"auth0_sub": profile.auth0_sub},
             {"$set": profile.model_dump(mode="json")},
             upsert=True,
@@ -35,20 +35,20 @@ class MongoDBUserProfileStore:
     async def list_profiles(
         self, *, skip: int = 0, limit: int = 50
     ) -> list[UserProfile]:
-        docs = (
+        cursor = (
             self._col.find()
             .sort("created_at", 1)
             .skip(skip)
             .limit(limit)
         )
         results = []
-        for doc in docs:
+        async for doc in cursor:
             doc.pop("_id", None)
             results.append(UserProfile.model_validate(doc))
         return results
 
     async def deactivate(self, auth0_sub: str) -> bool:
-        result = self._col.update_one(
+        result = await self._col.update_one(
             {"auth0_sub": auth0_sub},
             {
                 "$set": {
@@ -72,11 +72,11 @@ class MongoDBAuditStore:
 
     COLLECTION = "audit_log"
 
-    def __init__(self, db: Database[Any]) -> None:
+    def __init__(self, db: AsyncIOMotorDatabase) -> None:
         self._col = db[self.COLLECTION]
 
     async def append(self, entry: AuditEntry) -> None:
-        self._col.insert_one(entry.model_dump(mode="json"))
+        await self._col.insert_one(entry.model_dump(mode="json"))
 
     async def query(
         self,
@@ -104,14 +104,14 @@ class MongoDBAuditStore:
                 ts_filter["$lte"] = until
             query["timestamp"] = ts_filter
 
-        docs = (
+        cursor = (
             self._col.find(query)
             .sort("timestamp", -1)
             .skip(skip)
             .limit(limit)
         )
         results = []
-        for doc in docs:
+        async for doc in cursor:
             doc.pop("_id", None)
             results.append(AuditEntry.model_validate(doc))
         return results

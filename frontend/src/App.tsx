@@ -5,6 +5,7 @@ import InterviewPage from "./pages/InterviewPage";
 import DashboardPage from "./pages/DashboardPage";
 import ReportPage from "./pages/ReportPage";
 import PlanListPage from "./pages/PlanListPage";
+import QuickReviewPage from "./pages/QuickReviewPage";
 import AdminAnalyticsPage from "./pages/AdminAnalyticsPage";
 
 export default function App() {
@@ -15,6 +16,7 @@ export default function App() {
         <Route path="/plans" element={<PlanListPage />} />
         <Route path="/interview" element={<InterviewPage />} />
         <Route path="/interview/:planId" element={<InterviewPage />} />
+        <Route path="/review/:planId" element={<QuickReviewPage />} />
         <Route path="/dashboard/:planId" element={<DashboardPage />} />
         <Route path="/report/:reportId" element={<ReportPage />} />
         {import.meta.env.DEV && (

@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import ChartCard from "../components/charts/ChartCard";
 import DataTable from "../components/reports/DataTable";
 import RecommendationCard from "../components/reports/RecommendationCard";
@@ -11,12 +11,14 @@ import type { PipelineResult } from "../types/api";
 export default function DashboardPage() {
   const { planId } = useParams<{ planId: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const runPipeline = useRunPipeline();
   const copyPlan = useCopyPlan();
   const { data: plan } = usePlan(planId);
   const { data: allPlans } = usePlans();
   const [result, setResult] = useState<PipelineResult | null>(null);
   const [showCopyModal, setShowCopyModal] = useState(false);
+  const autorunTriggered = useRef(false);
 
   async function handleRun() {
     if (!planId) return;
@@ -27,6 +29,14 @@ export default function DashboardPage() {
       // handled by react-query
     }
   }
+
+  useEffect(() => {
+    if (searchParams.get("autorun") === "true" && !autorunTriggered.current && planId) {
+      autorunTriggered.current = true;
+      setSearchParams({}, { replace: true });
+      handleRun();
+    }
+  }, [planId, searchParams]);
 
   const metrics = result?.outputs.metrics ?? {};
   const charts = result?.outputs.chart_specs ?? [];
@@ -67,11 +77,14 @@ export default function DashboardPage() {
         </div>
         <div className="flex flex-wrap gap-3">
           <button
-            className="btn-ghost"
-            onClick={() => navigate(`/interview?plan_id=${planId}`)}
+            className="btn-ghost flex items-center gap-2"
+            onClick={() => navigate(`/review/${planId}`)}
             disabled={!planId}
           >
-            Update Responses
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+            </svg>
+            Review Responses
           </button>
           <button
             className="btn-ghost"
@@ -89,7 +102,7 @@ export default function DashboardPage() {
                 </svg>
                 Running...
               </span>
-            ) : result ? "Re-run Pipeline" : "Run Pipeline"}
+            ) : result ? "Re-run Analysis" : "Run Analysis"}
           </button>
           {result && (
             <button
@@ -104,7 +117,7 @@ export default function DashboardPage() {
 
       {runPipeline.isError && (
         <div className="mb-8 rounded-2xl border border-red-200 bg-red-50 p-5 shadow-soft">
-          <p className="font-medium text-red-700">Pipeline failed</p>
+          <p className="font-medium text-red-700">Analysis failed</p>
           <p className="mt-1 text-sm text-red-600/80">{runPipeline.error?.message}</p>
         </div>
       )}
@@ -142,7 +155,7 @@ export default function DashboardPage() {
               accent="amber"
             />
             <MetricCard
-              label="Pipeline Duration"
+              label="Analysis Duration"
               value={`${metrics.total_duration_ms ?? 0}ms`}
               accent="sage"
             />
@@ -197,10 +210,10 @@ export default function DashboardPage() {
             </svg>
           </div>
           <p className="mb-6 text-sage-600">
-            Run the pipeline to see your retirement projections.
+            Run the analysis to see your retirement projections.
           </p>
           <button className="btn-primary" onClick={handleRun}>
-            Run Pipeline
+            Run Analysis
           </button>
         </div>
       )}

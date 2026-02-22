@@ -80,12 +80,12 @@ class RespondResponse(BaseModel):
 async def start_interview(req: StartInterviewRequest) -> StartInterviewResponse:
     """Start an interview session for a new or existing plan."""
     if req.plan_id:
-        schema = get_plan(req.plan_id)
+        schema = await get_plan(req.plan_id)
         if schema is None or schema.owner_id != req.owner_id:
             raise HTTPException(status_code=404, detail="Plan not found")
         plan_id = schema.plan_id
         
-        existing_session = get_session_for_plan(plan_id)
+        existing_session = await get_session_for_plan(plan_id)
         if existing_session and existing_session.history:
             history = [
                 HistoryMessage(
@@ -100,6 +100,9 @@ async def start_interview(req: StartInterviewRequest) -> StartInterviewResponse:
             
             if decision.interview_complete:
                 message = "This plan is complete. Would you like to make any changes to your answers?"
+                if schema.status == "intake_in_progress":
+                    schema.status = "intake_complete"
+                    await store_plan(schema)
             else:
                 message = f"Welcome back! Let's continue where we left off.\n\n{decision.next_question}"
             
@@ -150,7 +153,7 @@ async def start_interview(req: StartInterviewRequest) -> StartInterviewResponse:
                 legacy_floor=_default_pf(0),
             ),
         )
-        store_plan(schema)
+        await store_plan(schema)
 
     settings = get_settings()
     session = InterviewSession(
@@ -159,7 +162,7 @@ async def start_interview(req: StartInterviewRequest) -> StartInterviewResponse:
         model=settings.llm_model,
     )
     turn = session.start()
-    store_session(session)
+    await store_session(session)
 
     return StartInterviewResponse(
         session_id=session.session_id,
@@ -175,7 +178,7 @@ async def start_interview(req: StartInterviewRequest) -> StartInterviewResponse:
 @router.post("/respond", response_model=RespondResponse)
 async def respond(req: RespondRequest) -> RespondResponse:
     """Process a user message in an active interview session."""
-    session = get_session(req.session_id)
+    session = await get_session(req.session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -184,8 +187,8 @@ async def respond(req: RespondRequest) -> RespondResponse:
     if turn.interview_complete and session.schema.status == "intake_in_progress":
         session.schema.status = "intake_complete"
 
-    store_plan(session.schema)
-    store_session(session)
+    await store_plan(session.schema)
+    await store_session(session)
 
     applied = [p.path for p in turn.patch_result.applied] if turn.patch_result else []
     rejected = [r for _, r in turn.patch_result.rejected] if turn.patch_result else []

@@ -13,6 +13,7 @@ const NAV_ITEMS = [
 const BREADCRUMB_MAP: Record<string, { label: string; parent?: string }> = {
   "/plans": { label: "Your Plans" },
   "/interview": { label: "Interview", parent: "/plans" },
+  "/review": { label: "Review Responses", parent: "/plans" },
   "/dashboard": { label: "Dashboard", parent: "/plans" },
   "/report": { label: "Report", parent: "/plans" },
   "/admin/analytics": { label: "LLM Analytics" },
@@ -39,6 +40,9 @@ function getBreadcrumbs(pathname: string) {
 function extractPlanId(pathname: string, search: string): string | undefined {
   const dashboardMatch = pathname.match(/^\/dashboard\/([^/]+)/);
   if (dashboardMatch) return dashboardMatch[1];
+  
+  const reviewMatch = pathname.match(/^\/review\/([^/]+)/);
+  if (reviewMatch) return reviewMatch[1];
   
   const reportMatch = pathname.match(/^\/report\/([^/]+)/);
   if (reportMatch) return reportMatch[1];

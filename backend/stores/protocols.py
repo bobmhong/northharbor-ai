@@ -1,58 +1,59 @@
-"""Protocol definitions for North Harbor AI data stores.
+"""Store protocols for plans, sessions, and snapshots.
 
-Each protocol describes the contract for a single data domain.  Concrete
-implementations (in-memory, MongoDB) satisfy these protocols through
-structural subtyping -- no base-class inheritance required.
+All store methods are async. In-memory implementations are trivially
+async; Motor-backed implementations use native async I/O.
 """
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Protocol, runtime_checkable
 
-from backend.auth.models import AuditEntry, UserProfile
+from pydantic import BaseModel, Field
+
+from backend.schema.canonical import CanonicalPlanSchema
+
+
+class SessionDocument(BaseModel):
+    """Serializable session data (no live LLMClient reference)."""
+
+    session_id: str
+    plan_id: str
+    model: str
+    history: list[dict[str, Any]] = Field(default_factory=list)
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
 
 
 @runtime_checkable
-class UserProfileStore(Protocol):
-    """Read/write local user profiles (synced from Auth0)."""
+class PlanStore(Protocol):
+    """Storage protocol for canonical plan schemas."""
 
-    async def get_by_sub(self, auth0_sub: str) -> UserProfile | None:
-        """Return a user profile by Auth0 subject, or None."""
-        ...
+    async def get(self, plan_id: str) -> CanonicalPlanSchema | None: ...
 
-    async def upsert(self, profile: UserProfile) -> None:
-        """Create or update a user profile."""
-        ...
+    async def save(self, plan: CanonicalPlanSchema) -> None: ...
 
-    async def list_profiles(
-        self, *, skip: int = 0, limit: int = 50
-    ) -> list[UserProfile]:
-        """Return paginated user profiles (admin use)."""
-        ...
+    async def list_by_owner(self, owner_id: str) -> list[CanonicalPlanSchema]: ...
 
-    async def deactivate(self, auth0_sub: str) -> bool:
-        """Mark a user as inactive. Return True if found."""
-        ...
+    async def delete(self, plan_id: str) -> bool: ...
 
-
-@runtime_checkable
-class AuditStore(Protocol):
-    """Append-only audit log storage."""
-
-    async def append(self, entry: AuditEntry) -> None:
-        """Write an audit entry. Must never update or delete."""
-        ...
-
-    async def query(
+    async def update_fields(
         self,
-        *,
-        auth0_sub: str | None = None,
-        action: str | None = None,
-        resource_type: str | None = None,
-        since: str | None = None,
-        until: str | None = None,
-        skip: int = 0,
-        limit: int = 100,
-    ) -> list[AuditEntry]:
-        """Query audit entries with optional filters."""
-        ...
+        plan_id: str,
+        updates: dict[str, Any],
+        expected_version: int | None = None,
+    ) -> CanonicalPlanSchema | None: ...
+
+
+@runtime_checkable
+class SessionStore(Protocol):
+    """Storage protocol for interview session data."""
+
+    async def get(self, session_id: str) -> SessionDocument | None: ...
+
+    async def save(self, session: SessionDocument) -> None: ...
+
+    async def get_for_plan(self, plan_id: str) -> SessionDocument | None: ...
+
+    async def delete_for_plan(self, plan_id: str) -> int: ...

@@ -5,7 +5,6 @@ import ChatInput, { detectEditIntent } from "../components/interview/ChatInput";
 import ChatMessage from "../components/interview/ChatMessage";
 import { useInterviewStore } from "../stores/interviewStore";
 import { api } from "../api/client";
-import { formatCurrency, formatPercent } from "../lib/utils";
 
 let startInterviewInFlight: Promise<void> | null = null;
 
@@ -13,58 +12,45 @@ function extractFieldName(question: string | undefined): string {
   if (!question) return "answer";
   const q = question.toLowerCase();
   
-  // Name - expanded patterns
   if ((q.includes("name") && (q.includes("call you") || q.includes("your name") || q.includes("what's your") || q.includes("what is your"))) ||
       q.includes("may i call you") || q.includes("should i call you") ||
       (q.includes("name") && q.includes("?"))) return "name";
   
-  // Location
   if (q.includes("state") && (q.includes("live") || q.includes("reside") || q.includes("located"))) return "state";
   if (q.includes("city") && (q.includes("live") || q.includes("reside") || q.includes("located"))) return "city";
   
-  // Age / Birth year
   if (q.includes("retire") && (q.includes("age") || q.includes("when") || q.includes("plan to"))) return "target retirement age";
   if (q.includes("birth year") || q.includes("year were you born") || q.includes("born in")) return "birth year";
   if (q.includes("current age") || q.includes("old are you") || q.includes("your age")) return "age";
   
-  // Income
   if (q.includes("income") || q.includes("salary") || q.includes("earn") || q.includes("make per year")) return "annual income";
   
-  // Legacy
   if (q.includes("legacy") || q.includes("leave behind") || q.includes("inheritance") || q.includes("estate")) return "legacy goal";
   
-  // Balance
   if (q.includes("balance") || q.includes("saved") || q.includes("retirement account") || q.includes("401") || q.includes("ira") || q.includes("savings")) return "retirement balance";
   
-  // Spending
   if (q.includes("spend") || q.includes("expenses") || q.includes("monthly") || q.includes("budget")) return "monthly spending";
   
-  // Success rate / Monte Carlo
   if (q.includes("success rate") || q.includes("success probability") || 
       q.includes("monte carlo") || q.includes("probability of success") ||
       q.includes("confidence level") || q.includes("plan success")) return "success rate";
 
-  // Social Security claiming age
   if (q.includes("claim social security") || q.includes("claiming social security") ||
       q.includes("start claiming social security") || q.includes("claiming age")) {
     return "Social Security claiming age";
   }
   
-  // Employer plan (yes/no)
   if (q.includes("employer offer") || q.includes("employer retirement") ||
       (q.includes("401(k)") && q.includes("offer")) || (q.includes("401k") && q.includes("offer")) ||
       (q.includes("employer") && q.includes("plan"))) return "employer plan";
   
-  // Employer match
   if (q.includes("employer match") || q.includes("company match") ||
       q.includes("matching contribution") || q.includes("does your employer match") ||
       q.includes("what percentage does your employer")) return "employer match";
   
-  // Employee contribution (specific to employer plan)
   if ((q.includes("do you contribute") || q.includes("your contribution")) &&
       (q.includes("retirement plan") || q.includes("401"))) return "contribution rate";
   
-  // Savings rate (general)
   if (q.includes("savings rate") || q.includes("percentage") || q.includes("% of your income") || 
       q.includes("contribute") || q.includes("saving")) return "savings rate";
   
@@ -110,13 +96,11 @@ function fieldLabelFromPath(fieldPath?: string | null): string | undefined {
 function formatCorrectionValue(value: string, fieldName: string): string {
   const trimmed = value.trim();
   
-  // Text fields that should never be formatted - return as-is
   const textFields = ["name", "state", "city", "employer plan"];
   if (textFields.includes(fieldName)) {
     return trimmed;
   }
   
-  // Percentage fields or values ending in %
   const percentageFields = ["savings rate", "success rate", "employer match", "contribution rate"];
   if (percentageFields.includes(fieldName) || trimmed.match(/^\d+%$/)) {
     const num = parseFloat(trimmed.replace(/%$/, ""));
@@ -124,7 +108,6 @@ function formatCorrectionValue(value: string, fieldName: string): string {
     return trimmed;
   }
   
-  // Monetary fields
   const monetaryFields = ["annual income", "legacy goal", "retirement balance", "monthly spending"];
   if (monetaryFields.includes(fieldName)) {
     const num = parseInt(trimmed.replace(/[$,]/g, ""), 10);
@@ -132,7 +115,6 @@ function formatCorrectionValue(value: string, fieldName: string): string {
     return trimmed;
   }
   
-  // Age and year fields - just return as-is
   if (
     fieldName === "age" ||
     fieldName === "target retirement age" ||
@@ -142,8 +124,6 @@ function formatCorrectionValue(value: string, fieldName: string): string {
     return trimmed;
   }
   
-  // Auto-detect: if value looks like a large number or has $ sign, format as currency
-  // But exclude 4-digit years (1900-2100)
   const numericValue = trimmed.replace(/[$,]/g, "");
   if (numericValue.match(/^\d+$/)) {
     const num = parseInt(numericValue, 10);
@@ -181,8 +161,6 @@ export default function InterviewPage() {
     isResumed,
     editing,
     phase,
-    analysisResult,
-    analysisError,
     setSession,
     addMessage,
     setMessages,
@@ -192,15 +170,12 @@ export default function InterviewPage() {
     setResumed,
     setEditing,
     setPhase,
-    setAnalysisResult,
-    setAnalysisError,
     reset,
   } = useInterviewStore();
 
   useEffect(() => {
-    // If we have a session but no messages, we need to reload the history
-    // This can happen if the user navigates away and comes back
-    const needsReload = !sessionId || (sessionId && messages.length === 0);
+    const staleSession = !planIdParam && !!planId;
+    const needsReload = !sessionId || (sessionId && messages.length === 0) || staleSession;
     
     if (!needsReload || startInterviewInFlight) {
       return;
@@ -208,7 +183,7 @@ export default function InterviewPage() {
     startInterviewInFlight = startNewInterview().finally(() => {
       startInterviewInFlight = null;
     });
-  }, [sessionId, planIdParam, messages.length]);
+  }, [sessionId, planId, planIdParam, messages.length]);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -305,7 +280,6 @@ export default function InterviewPage() {
         addMessage("assistant", res.message, { fieldPath: res.target_field ?? undefined });
         if (res.interview_complete) setComplete(true);
         
-        // Invalidate plan data to refresh header (name, scenario, etc.)
         queryClient.invalidateQueries({ queryKey: ["plan", planId || planIdParam] });
         queryClient.invalidateQueries({ queryKey: ["plans"] });
       } catch (err) {
@@ -345,14 +319,12 @@ export default function InterviewPage() {
   const handleEditMessage = useCallback(
     (index: number, content: string) => {
       setInputCollapsed(false);
-      // Check if this is an update message - if so, use the original message's context
       const currentMessage = messages[index];
       const searchFromIndex = currentMessage?.originalIndex !== undefined 
         ? currentMessage.originalIndex 
         : index;
       const baseMessage = messages[searchFromIndex];
       
-      // Find the preceding assistant message to determine the input mode
       let precedingQuestion: string | undefined;
       let precedingFieldPath: string | undefined;
       for (let i = searchFromIndex - 1; i >= 0; i--) {
@@ -378,7 +350,6 @@ export default function InterviewPage() {
 
   const handleSubmitEdit = useCallback(
     async (index: number, newContent: string) => {
-      // Get the preceding question before clearing editing state
       const precedingQuestion = editing?.precedingQuestion;
       const fieldName =
         fieldLabelFromPath(editing?.precedingFieldPath) ??
@@ -386,20 +357,16 @@ export default function InterviewPage() {
       const formattedValue = formatCorrectionValue(newContent, fieldName);
       const correctionMessage = buildCorrectionMessage(fieldName, formattedValue);
       
-      // Build update label (e.g., "Income update")
       const updateLabel = fieldName === "answer" 
         ? "Update"
         : `${fieldName.charAt(0).toUpperCase() + fieldName.slice(1)} update`;
       
       setEditing(null);
       
-      // Calculate the index where the new user message will be added
       const newMessageIndex = messages.length;
       
-      // Mark the original message as updated, pointing to the new message
       markMessageUpdated(index, newMessageIndex);
       
-      // Add user's correction as a new chat bubble with update metadata
       addMessage("user", formattedValue, {
         isUpdate: true,
         updateLabel,
@@ -416,7 +383,6 @@ export default function InterviewPage() {
           if (res.interview_complete) {
             setComplete(true);
             setPhase("ready_for_analysis");
-            setAnalysisResult(null);
           }
           
           queryClient.invalidateQueries({ queryKey: ["plan", planId || planIdParam] });
@@ -428,7 +394,7 @@ export default function InterviewPage() {
         }
       }
     },
-    [sessionId, planId, planIdParam, queryClient, editing, messages.length, markMessageUpdated, addMessage, setLoading, setComplete, setEditing, setPhase, setAnalysisResult]
+    [sessionId, planId, planIdParam, queryClient, editing, messages.length, markMessageUpdated, addMessage, setLoading, setComplete, setEditing, setPhase]
   );
 
   const handleSendWithEditDetection = useCallback(
@@ -452,10 +418,11 @@ export default function InterviewPage() {
     [messages, addMessage, handleSend]
   );
 
-  const inputHeight = inputCollapsed ? 64 : Math.max(80, inputPanelHeight + 12);
+  const showInput = phase !== "ready_for_analysis" || editing !== null;
+  const inputHeight = !showInput ? 0 : inputCollapsed ? 64 : Math.max(80, inputPanelHeight + 12);
 
   useEffect(() => {
-    if (!inputPanelRef.current || inputCollapsed) {
+    if (!inputPanelRef.current || inputCollapsed || !showInput) {
       return;
     }
     const element = inputPanelRef.current;
@@ -465,7 +432,7 @@ export default function InterviewPage() {
     observer.observe(element);
     setInputPanelHeight(element.offsetHeight);
     return () => observer.disconnect();
-  }, [inputCollapsed, editing, isComplete, currentTargetField]);
+  }, [inputCollapsed, editing, isComplete, currentTargetField, showInput]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -484,7 +451,6 @@ export default function InterviewPage() {
     const targetElement = container.querySelector(`[data-message-index="${targetIndex}"]`);
     if (targetElement) {
       targetElement.scrollIntoView({ behavior: "smooth", block: "center" });
-      // Brief highlight effect
       targetElement.classList.add("ring-2", "ring-harbor-400", "ring-offset-2");
       setTimeout(() => {
         targetElement.classList.remove("ring-2", "ring-harbor-400", "ring-offset-2");
@@ -501,7 +467,6 @@ export default function InterviewPage() {
     return undefined;
   }, [messages]);
 
-  // Compute field labels for each user message based on preceding assistant question
   const fieldLabels = useMemo(() => {
     const labels: Record<number, string> = {};
     for (let i = 0; i < messages.length; i++) {
@@ -510,7 +475,6 @@ export default function InterviewPage() {
           labels[i] = fieldLabelFromPath(messages[i].fieldPath) ?? "answer";
           continue;
         }
-        // Find preceding assistant message
         let precedingQuestion: string | undefined;
         for (let j = i - 1; j >= 0; j--) {
           if (messages[j].role === "assistant") {
@@ -537,58 +501,15 @@ export default function InterviewPage() {
     }
   }, [isComplete, phase, setPhase]);
 
-  const handleRunAnalysis = useCallback(async () => {
-    const activePlanId = planId || planIdParam;
-    if (!activePlanId) return;
-
-    setPhase("running_analysis");
-    setAnalysisError(null);
-    addMessage("assistant", "Running Monte Carlo simulations — this may take a moment...");
-
-    try {
-      const result = await api.runPipeline(activePlanId);
-      setAnalysisResult(result);
-      setPhase("results_ready");
-
-      const age = result.outputs.metrics?.recommended_retirement_age;
-      const prob = result.outputs.metrics?.recommended_age_success_probability;
-      const probStr = prob != null ? formatPercent(Number(prob)) : null;
-      const summary = age
-        ? `Analysis complete! Based on your inputs, the recommended retirement age is **${age}**${probStr ? ` with a **${probStr}** success probability` : ""}.`
-        : "Analysis complete! Your projections are ready for review.";
-      addMessage("assistant", summary);
-
-      queryClient.invalidateQueries({ queryKey: ["plan", activePlanId] });
-      queryClient.invalidateQueries({ queryKey: ["plans"] });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Analysis failed";
-      setAnalysisError(msg);
-      setPhase("ready_for_analysis");
-      addMessage("assistant", `Something went wrong running the analysis: ${msg}. You can try again.`);
-    }
-  }, [planId, planIdParam, addMessage, setPhase, setAnalysisResult, setAnalysisError, queryClient]);
-
-  const metrics = analysisResult?.outputs.metrics ?? {};
+  const activePlanId = planId || planIdParam;
 
   return (
     <>
-      <div className="mx-auto max-w-2xl flex-1 flex flex-col min-h-0" style={{ paddingBottom: inputHeight }}>
+      <div className="mx-auto max-w-2xl flex-1 flex flex-col min-h-0" style={{ paddingBottom: phase === "ready_for_analysis" && !editing ? undefined : inputHeight }}>
         <div className="flex items-center justify-between gap-4 mb-4 shrink-0">
           <p className="text-sm text-sage-600">
-            {phase === "results_ready"
-              ? "Your projections are ready. Explore the results below or view the full dashboard."
-              : phase === "running_analysis"
-                ? "Running simulations..."
-                : "Tell me about your retirement goals and I'll build a plan."}
+            Tell me about your retirement goals and I'll build a plan.
           </p>
-          {phase === "results_ready" && planId && (
-            <button
-              className="btn-primary shrink-0"
-              onClick={() => navigate(`/dashboard/${planId}`)}
-            >
-              View Full Dashboard
-            </button>
-          )}
         </div>
 
         <div className="card-elevated flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -636,138 +557,92 @@ export default function InterviewPage() {
             <div ref={scrollRef} />
           </div>
         </div>
+
+        {phase === "ready_for_analysis" && !editing && (
+          <div className="mt-4 rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50 px-5 py-5">
+            <div className="flex items-center justify-center gap-2 text-emerald-700 text-sm mb-3">
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="font-semibold">
+                {isResumed
+                  ? "All information collected. Ready to run your analysis."
+                  : "Interview complete! Ready to generate your projections."}
+              </span>
+            </div>
+            {isResumed && (
+              <p className="mb-4 text-xs text-sage-600 text-center">
+                You can also click the reply icon on any answer above to make changes first.
+              </p>
+            )}
+            <div className="flex justify-center gap-3">
+              <button
+                className="btn-ghost flex items-center gap-2"
+                onClick={() => activePlanId && navigate(`/review/${activePlanId}`)}
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                </svg>
+                Review Responses
+              </button>
+              <button
+                className="btn-primary flex items-center gap-2"
+                onClick={() => activePlanId && navigate(`/dashboard/${activePlanId}?autorun=true`)}
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Run Analysis
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {inputCollapsed ? (
-        <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-sm border-t border-sage-200/60 shadow-elevated">
-          <div className="mx-auto max-w-2xl px-4 sm:px-6 py-2.5 flex items-center justify-between gap-3">
-            <span className="text-xs text-sage-600">
-              Input hidden. Press Escape while typing to hide.
-            </span>
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={() => setInputCollapsed(false)}
+      {showInput && (
+        <>
+          {inputCollapsed ? (
+            <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-sm border-t border-sage-200/60 shadow-elevated">
+              <div className="mx-auto max-w-2xl px-4 sm:px-6 py-2.5 flex items-center justify-between gap-3">
+                <span className="text-xs text-sage-600">
+                  Input hidden. Press Escape while typing to hide.
+                </span>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => setInputCollapsed(false)}
+                >
+                  Show input
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div
+              ref={inputPanelRef}
+              className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-sm border-t border-sage-200/60 shadow-elevated"
             >
-              Show input
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div
-          ref={inputPanelRef}
-          className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-sm border-t border-sage-200/60 shadow-elevated"
-        >
-          <div className="mx-auto max-w-2xl px-4 sm:px-6 py-3">
-            <ChatInput
-              onSend={handleSendWithEditDetection}
-              disabled={isLoading || phase === "running_analysis" || phase === "results_ready" || (isComplete && !editing)}
-              placeholder={
-                phase === "running_analysis"
-                  ? "Analysis in progress..."
-                  : phase === "results_ready"
-                    ? "Analysis complete — view your dashboard."
-                    : isComplete
+              <div className="mx-auto max-w-2xl px-4 sm:px-6 py-3">
+                <ChatInput
+                  onSend={handleSendWithEditDetection}
+                  disabled={isLoading || (isComplete && !editing)}
+                  placeholder={
+                    isComplete
                       ? "Click the reply icon on any answer to make changes."
                       : "Type your answer..."
-              }
-              lastAssistantMessage={lastAssistantMessage}
-              currentTargetField={currentTargetField}
-              currentTargetValue={currentTargetValue}
-              clientBirthYearValue={latestBirthYearValue}
-              conversationContext={conversationContext}
-              editing={editing}
-              onCancelEdit={handleCancelEdit}
-              onSubmitEdit={handleSubmitEdit}
-            />
-
-            {phase === "ready_for_analysis" && (
-              <div className="mt-3 rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50 px-4 py-4">
-                <div className="flex items-center justify-center gap-2 text-emerald-700 text-sm mb-3">
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span className="font-medium">
-                    {isResumed
-                      ? "All information collected. Ready to run your analysis."
-                      : "Interview complete! Ready to generate your projections."}
-                  </span>
-                </div>
-                {isResumed && (
-                  <p className="mb-3 text-xs text-sage-600 text-center">
-                    You can also click the reply icon on any answer above to make changes first.
-                  </p>
-                )}
-                {analysisError && (
-                  <p className="mb-3 text-xs text-red-600 text-center">{analysisError}</p>
-                )}
-                <div className="flex justify-center">
-                  <button className="btn-primary" onClick={handleRunAnalysis}>
-                    Run Analysis
-                  </button>
-                </div>
+                  }
+                  lastAssistantMessage={lastAssistantMessage}
+                  currentTargetField={currentTargetField}
+                  currentTargetValue={currentTargetValue}
+                  clientBirthYearValue={latestBirthYearValue}
+                  conversationContext={conversationContext}
+                  editing={editing}
+                  onCancelEdit={handleCancelEdit}
+                  onSubmitEdit={handleSubmitEdit}
+                />
               </div>
-            )}
-
-            {phase === "running_analysis" && (
-              <div className="mt-3 rounded-xl border border-harbor-200 bg-gradient-to-r from-harbor-50 to-sage-50 px-4 py-4">
-                <div className="flex items-center justify-center gap-3 text-harbor-700 text-sm">
-                  <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  <span className="font-medium">Running Monte Carlo simulations...</span>
-                </div>
-                <p className="mt-2 text-xs text-sage-600 text-center">
-                  Generating projections across thousands of market scenarios.
-                </p>
-              </div>
-            )}
-
-            {phase === "results_ready" && analysisResult && (
-              <div className="mt-3 rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-white px-4 py-4">
-                <div className="flex items-center justify-center gap-2 text-emerald-700 text-sm mb-3">
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span className="font-medium">Analysis Complete</span>
-                </div>
-                <div className="grid grid-cols-3 gap-3 mb-3">
-                  <div className="text-center">
-                    <p className="text-xs text-sage-500 mb-0.5">Retire At</p>
-                    <p className="text-lg font-bold text-harbor-900">
-                      {String(metrics.recommended_retirement_age ?? "—")}
-                    </p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-xs text-sage-500 mb-0.5">Success Rate</p>
-                    <p className="text-lg font-bold text-emerald-700">
-                      {metrics.recommended_age_success_probability != null
-                        ? formatPercent(Number(metrics.recommended_age_success_probability))
-                        : "—"}
-                    </p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-xs text-sage-500 mb-0.5">Median Balance</p>
-                    <p className="text-lg font-bold text-harbor-900">
-                      {metrics.recommended_age_terminal_p50 != null
-                        ? formatCurrency(Number(metrics.recommended_age_terminal_p50))
-                        : "—"}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex justify-center gap-3">
-                  <button
-                    className="btn-primary"
-                    onClick={() => planId && navigate(`/dashboard/${planId}`)}
-                  >
-                    View Full Dashboard
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+            </div>
+          )}
+        </>
       )}
     </>
   );

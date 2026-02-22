@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     mongodb_uri: str = "mongodb://localhost:27017"
     mongodb_database: str = "northharbor_ai"
 
+    store_backend: str = "memory"
     app_env: str = "development"
     log_level: str = "info"
 

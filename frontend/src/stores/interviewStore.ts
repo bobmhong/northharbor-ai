@@ -1,11 +1,8 @@
 import { create } from "zustand";
-import type { PipelineResult } from "../types/api";
 
 export type InterviewPhase =
   | "interviewing"
-  | "ready_for_analysis"
-  | "running_analysis"
-  | "results_ready";
+  | "ready_for_analysis";
 
 interface Message {
   role: "user" | "assistant";
@@ -34,8 +31,6 @@ interface InterviewState {
   isResumed: boolean;
   editing: EditingState | null;
   phase: InterviewPhase;
-  analysisResult: PipelineResult | null;
-  analysisError: string | null;
 
   setSession: (sessionId: string, planId: string) => void;
   addMessage: (role: "user" | "assistant", content: string, extra?: Partial<Message>) => void;
@@ -47,8 +42,6 @@ interface InterviewState {
   setResumed: (resumed: boolean) => void;
   setEditing: (editing: EditingState | null) => void;
   setPhase: (phase: InterviewPhase) => void;
-  setAnalysisResult: (result: PipelineResult | null) => void;
-  setAnalysisError: (error: string | null) => void;
   reset: () => void;
 }
 
@@ -61,8 +54,6 @@ export const useInterviewStore = create<InterviewState>((set) => ({
   isResumed: false,
   editing: null,
   phase: "interviewing",
-  analysisResult: null,
-  analysisError: null,
 
   setSession: (sessionId, planId) => set({ sessionId, planId }),
 
@@ -95,8 +86,6 @@ export const useInterviewStore = create<InterviewState>((set) => ({
   setResumed: (isResumed) => set({ isResumed }),
   setEditing: (editing) => set({ editing }),
   setPhase: (phase) => set({ phase }),
-  setAnalysisResult: (analysisResult) => set({ analysisResult }),
-  setAnalysisError: (analysisError) => set({ analysisError }),
 
   reset: () =>
     set({
@@ -108,7 +97,5 @@ export const useInterviewStore = create<InterviewState>((set) => ({
       isResumed: false,
       editing: null,
       phase: "interviewing",
-      analysisResult: null,
-      analysisError: null,
     }),
 }));

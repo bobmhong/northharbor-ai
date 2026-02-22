@@ -2,14 +2,26 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.analytics.router import router as analytics_router
+from backend.api.deps import init_stores
 from backend.api.middleware import RequestLoggingMiddleware
+from backend.config import get_settings
 from backend.interview.router import router as interview_router
 from backend.pipelines.router import router as pipelines_router
 from backend.security.headers import SecurityHeadersMiddleware
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    settings = get_settings()
+    await init_stores(settings)
+    yield
 
 
 def create_app() -> FastAPI:
@@ -19,6 +31,7 @@ def create_app() -> FastAPI:
         version="0.1.0",
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
+        lifespan=lifespan,
     )
 
     app.add_middleware(
@@ -37,6 +50,6 @@ def create_app() -> FastAPI:
 
     @app.get("/api/health")
     async def health_check() -> dict[str, str]:
-        return {"status": "ok"}
+        return {"status": "ok", "store_backend": get_settings().store_backend}
 
     return app
