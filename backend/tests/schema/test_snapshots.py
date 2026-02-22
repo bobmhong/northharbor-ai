@@ -1,6 +1,6 @@
 """Tests for schema snapshots."""
 
-import asyncio
+import unittest
 
 from backend.schema.canonical import (
     AccountsProfile,
@@ -98,42 +98,35 @@ class TestCreateSnapshot:
         assert snap.data["client"]["name"]["value"] == "Adam"
 
 
-class TestMemorySnapshotStore:
+class TestMemorySnapshotStore(unittest.IsolatedAsyncioTestCase):
     def test_protocol_compliance(self) -> None:
         assert isinstance(MemorySnapshotStore(), SnapshotStore)
 
-    def test_save_and_get(self) -> None:
+    async def test_save_and_get(self) -> None:
         store = MemorySnapshotStore()
         schema = _make_schema()
         snap = create_snapshot(schema)
 
-        asyncio.get_event_loop().run_until_complete(store.save(snap))
-        retrieved = asyncio.get_event_loop().run_until_complete(
-            store.get(snap.snapshot_id)
-        )
+        await store.save(snap)
+        retrieved = await store.get(snap.snapshot_id)
         assert retrieved is not None
         assert retrieved.snapshot_id == snap.snapshot_id
 
-    def test_get_missing_returns_none(self) -> None:
+    async def test_get_missing_returns_none(self) -> None:
         store = MemorySnapshotStore()
-        result = asyncio.get_event_loop().run_until_complete(
-            store.get("nonexistent")
-        )
+        result = await store.get("nonexistent")
         assert result is None
 
-    def test_list_for_plan(self) -> None:
+    async def test_list_for_plan(self) -> None:
         store = MemorySnapshotStore()
         s1 = _make_schema()
         s2 = _make_schema(plan_id="plan-002")
         snap1 = create_snapshot(s1)
         snap2 = create_snapshot(s2)
 
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(store.save(snap1))
-        loop.run_until_complete(store.save(snap2))
+        await store.save(snap1)
+        await store.save(snap2)
 
-        results = loop.run_until_complete(
-            store.list_for_plan("plan-001", "auth0|user1")
-        )
+        results = await store.list_for_plan("plan-001", "auth0|user1")
         assert len(results) == 1
         assert results[0].plan_id == "plan-001"
