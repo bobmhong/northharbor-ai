@@ -53,12 +53,21 @@ async def init_stores(settings: Settings | None = None) -> None:
 
     backend = settings.store_backend.strip().lower()
 
-    if backend == "mongodb":
+    if backend in ("mongodb", "mongo"):
         from backend.stores.mongo_plans import MongoPlanStore
         from backend.stores.mongo_sessions import MongoSessionStore
         from backend.stores.mongo_snapshots import MongoSnapshotStore
 
         db = _get_motor_database()
+
+        try:
+            await db.client.admin.command("ping")
+        except Exception as exc:
+            raise RuntimeError(
+                f"MongoDB connection failed ({settings.mongodb_uri}): {exc}.  "
+                "Set STORE_BACKEND=memory to use the in-memory store."
+            ) from exc
+
         plan_store = MongoPlanStore(db)
         session_store = MongoSessionStore(db)
         snapshot_store = MongoSnapshotStore(db)
@@ -73,11 +82,17 @@ async def init_stores(settings: Settings | None = None) -> None:
         _session_store = session_store
         _snapshot_store = snapshot_store
         _analytics_store = analytics_store
-    else:
+        logger.info("MongoDB connected: %s / %s", settings.mongodb_uri, settings.mongodb_database)
+    elif backend == "memory":
         _plan_store = InMemoryPlanStore()
         _session_store = InMemorySessionStore()
         _snapshot_store = InMemorySnapshotStore()
         _analytics_store = InMemoryLLMAnalyticsStore()
+    else:
+        raise RuntimeError(
+            f"Unknown STORE_BACKEND '{settings.store_backend}'. "
+            "Supported values: memory, mongodb"
+        )
 
     get_llm_tracker(store=_analytics_store)
     logger.info("Stores initialized with backend=%s", backend)

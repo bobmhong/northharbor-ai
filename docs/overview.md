@@ -40,5 +40,5 @@ Structured client documents (statements, tax forms) can be ingested, mapped to t
 - **Frontend:** React, TypeScript, Tailwind CSS
 - **Backend:** Python, FastAPI
 - **AI/ML:** [placeholder]
-- **Database:** [placeholder]
+- **Database:** In-memory (dev default) / MongoDB (local Docker or Atlas)
 - **Authentication:** Auth0

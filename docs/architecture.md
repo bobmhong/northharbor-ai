@@ -39,8 +39,9 @@ This document provides a high-level overview of the NorthHarbor Sage system arch
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Data Layer                              │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
-│  │  Database    │  │  File Store  │  │  Cache       │          │
-│  │  [TBD]       │  │  [TBD]       │  │  [TBD]       │          │
+│  │  Store       │  │  File Store  │  │  Cache       │          │
+│  │  memory /    │  │  [TBD]       │  │  Redis       │          │
+│  │  MongoDB     │  │              │  │              │          │
 │  └──────────────┘  └──────────────┘  └──────────────┘          │
 └─────────────────────────────────────────────────────────────────┘
 ```

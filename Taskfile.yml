@@ -23,7 +23,15 @@ tasks:
 
   setup:
     desc: Install all backend and frontend dependencies
-    deps: [setup:backend, setup:frontend]
+    deps: [setup:env, setup:backend, setup:frontend]
+
+  setup:env:
+    desc: Create .env from .env.example if it does not exist
+    status:
+      - test -f .env
+    cmds:
+      - cp .env.example .env
+      - echo "Created .env from .env.example — review and update values as needed."
 
   setup:backend:
     desc: Install backend Python dependencies
@@ -336,9 +344,30 @@ tasks:
         fi
 
   db:up:
-    desc: Start local MongoDB and Redis services
+    desc: Start local MongoDB and Redis services (skips MongoDB if using a remote URI)
     cmds:
-      - docker compose up -d mongodb redis
+      - |
+        uri="$(printenv MONGODB_URI 2>/dev/null || echo '')"
+        store="$(printenv STORE_BACKEND 2>/dev/null || echo '')"
+
+        case "$uri" in
+          mongodb+srv://*|*mongodb.net*)
+            echo "MONGODB_URI points to a remote provider — skipping local MongoDB container."
+            docker compose up -d redis
+            ;;
+          *)
+            docker compose up -d mongodb redis
+            ;;
+        esac
+
+        case "$store" in
+          mongodb|mongo) ;;
+          *)
+            echo ""
+            echo "Hint: STORE_BACKEND is '${store:-memory}'. To use MongoDB, set:"
+            echo "  STORE_BACKEND=mongodb"
+            ;;
+        esac
 
   db:down:
     desc: Stop local MongoDB and Redis services
@@ -375,18 +404,53 @@ tasks:
         PY
 
   env:check:
-    desc: Verify key runtime environment variables are available
+    desc: Verify key runtime environment variables and backend connectivity
     cmds:
       - |
         {{.PYTHON}} - <<'PY'
-        import os
-        keys = [
-            "LLM_PROVIDER",
-            "LLM_MODEL",
-            "NORTHHARBOR_OPENAPI_KEY",
-            "MONGODB_URI",
-        ]
-        for k in keys:
-            v = os.getenv(k, "")
-            print(f"{k}: {'set' if bool(v) else 'missing'}")
+        import os, sys
+
+        ok = True
+        def check(key, required=False):
+            global ok
+            v = os.getenv(key, "")
+            status = "set" if v else "MISSING" if required else "not set"
+            if required and not v:
+                ok = False
+            print(f"  {key}: {status}")
+            return v
+
+        store = os.getenv("STORE_BACKEND", "memory").strip().lower()
+        llm = os.getenv("LLM_PROVIDER", "ollama").strip().lower()
+
+        print(f"Store backend: {store}")
+        check("STORE_BACKEND")
+        if store in ("mongodb", "mongo"):
+            uri = check("MONGODB_URI", required=True)
+            check("MONGODB_DATABASE")
+            if uri:
+                try:
+                    from pymongo import MongoClient
+                    c = MongoClient(uri, serverSelectionTimeoutMS=5000)
+                    c.admin.command("ping")
+                    print("  MongoDB connectivity: OK")
+                except Exception as e:
+                    print(f"  MongoDB connectivity: FAILED ({e})")
+                    ok = False
+        else:
+            print("  (MongoDB vars not required for in-memory backend)")
+
+        print(f"\nLLM provider: {llm}")
+        check("LLM_PROVIDER")
+        check("LLM_MODEL")
+        if llm == "openai":
+            check("NORTHHARBOR_OPENAPI_KEY", required=True)
+        elif llm == "ollama":
+            check("OLLAMA_BASE_URL")
+
+        if not ok:
+            print("\n✗ Some required settings are missing or connectivity failed.")
+            sys.exit(1)
+        else:
+            print("\n✓ Environment looks good.")
         PY

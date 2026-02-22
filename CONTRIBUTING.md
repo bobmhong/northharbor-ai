@@ -24,6 +24,74 @@ Thank you for your interest in contributing to NorthHarbor Sage!
    - Ollama path: run local Ollama and set `LLM_PROVIDER=ollama`
 7. Validate environment wiring: `task env:check`
 
+## Storage Backend
+
+The app supports three storage modes. Start simple with in-memory, and graduate to
+MongoDB when you need persistence.
+
+| Mode | `STORE_BACKEND` | `MONGODB_URI` | When to use |
+|------|-----------------|---------------|-------------|
+| In-memory | `memory` (default) | not needed | Getting started, quick iteration |
+| Local Docker | `mongodb` | `mongodb://localhost:27017` | Persistent local dev |
+| MongoDB Atlas | `mongodb` | `mongodb+srv://...` | Cloud / shared environments |
+
+### Step 1: Start with in-memory (default)
+
+No extra setup. The default `.env.example` is ready to go:
+
+```bash
+task setup       # creates .env from .env.example if missing
+task dev:up      # start the app — data lives in memory
+```
+
+Data is lost when the server restarts. This is fine for working on frontend
+features, LLM prompt tuning, or anything that doesn't need persistence across
+restarts.
+
+### Step 2: Switch to local Docker MongoDB
+
+When you need data to survive restarts:
+
+```bash
+task db:up       # starts MongoDB and Redis containers
+```
+
+Then update your `.env`:
+
+```
+STORE_BACKEND=mongodb
+MONGODB_URI=mongodb://localhost:27017
+```
+
+Restart the backend and verify with `task env:check`.
+
+### Step 3: Use MongoDB Atlas (cloud)
+
+For a shared or cloud-hosted database, set `STORE_BACKEND` in your `.env` and
+keep the Atlas connection string outside the repo:
+
+```
+# .env
+STORE_BACKEND=mongodb
+```
+
+```
+# ~/.config/.env (loaded via direnv)
+MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/?appName=sage
+```
+
+Make sure your `.envrc` loads both files:
+
+```
+dotenv
+dotenv ~/.config/.env
+```
+
+Run `direnv allow`, then `task env:check` to verify connectivity.
+
+> **Note:** `task db:up` automatically skips the local MongoDB container when
+> `MONGODB_URI` points to a remote provider.
+
 ## Development Workflow
 
 1. Create a branch: `git checkout -b feature/your-feature`
