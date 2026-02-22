@@ -8,6 +8,7 @@ export interface StartInterviewResponse {
   session_id: string;
   plan_id: string;
   message: string;
+  target_field: string | null;
   interview_complete: boolean;
   history: HistoryMessage[];
   is_resumed: boolean;
@@ -15,6 +16,7 @@ export interface StartInterviewResponse {
 
 export interface RespondResponse {
   message: string;
+  target_field: string | null;
   applied_fields: string[];
   rejected_fields: string[];
   interview_complete: boolean;
@@ -105,4 +107,34 @@ export interface AIAnalysis {
   suggested_next_steps: string[];
   confidence_notes: string[];
   disclaimer: string;
+}
+
+export interface ModelUsage {
+  model: string;
+  count: number;
+}
+
+export interface PeriodMetrics {
+  period: string;
+  total_requests: number;
+  total_tokens: number;
+  total_request_bytes: number;
+  total_response_bytes: number;
+  models_used: ModelUsage[];
+}
+
+export interface RecentCall {
+  timestamp: string;
+  model: string;
+  request_bytes: number;
+  response_bytes: number;
+  estimated_tokens: number;
+  session_id: string | null;
+}
+
+export interface LLMAnalyticsResponse {
+  today: PeriodMetrics;
+  last_7_days: PeriodMetrics;
+  last_30_days: PeriodMetrics;
+  recent_calls: RecentCall[];
 }

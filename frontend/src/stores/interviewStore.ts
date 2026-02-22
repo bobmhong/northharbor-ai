@@ -4,6 +4,7 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   timestamp: string;
+  fieldPath?: string;
   updatedByIndex?: number;
   isUpdate?: boolean;
   updateLabel?: string;
@@ -14,6 +15,7 @@ interface EditingState {
   index: number;
   originalContent: string;
   precedingQuestion?: string;
+  precedingFieldPath?: string;
 }
 
 interface InterviewState {

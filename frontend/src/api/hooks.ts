@@ -113,3 +113,11 @@ export function useUpdateScenarioName() {
     },
   });
 }
+
+export function useLLMAnalytics() {
+  return useQuery({
+    queryKey: ["llm-analytics"],
+    queryFn: () => api.getLLMAnalytics(),
+    refetchInterval: 30000,
+  });
+}

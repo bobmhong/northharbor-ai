@@ -17,6 +17,7 @@ from backend.ai.prompts.extractor import (
     EXTRACTOR_SYSTEM_PROMPT,
     SCHEMA_CONTEXT_TEMPLATE,
 )
+from backend.analytics.llm_tracker import get_llm_tracker
 from backend.policy.engine import PolicyDecision, select_next_question
 from backend.schema.canonical import CanonicalPlanSchema
 from backend.schema.patch_ops import PatchOp, PatchResponse, PatchResult, apply_patches
@@ -66,9 +67,11 @@ class OllamaLLMClient:
         *,
         base_url: str = "http://localhost:11434",
         timeout_seconds: float = 30.0,
+        session_id: str | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
+        self.session_id = session_id
 
     async def create(
         self,
@@ -87,6 +90,8 @@ class OllamaLLMClient:
         if response_format and response_format.get("type") == "json_object":
             payload["format"] = "json"
 
+        request_content = json.dumps(messages)
+
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             response = await client.post(
                 f"{self.base_url}/api/chat",
@@ -98,6 +103,15 @@ class OllamaLLMClient:
         content = data.get("message", {}).get("content")
         if not isinstance(content, str):
             raise ValueError("Ollama response did not include assistant message content")
+
+        tracker = get_llm_tracker()
+        tracker.track_call(
+            model=model,
+            request_content=request_content,
+            response_content=content,
+            session_id=self.session_id,
+        )
+
         return content
 
 
@@ -110,10 +124,12 @@ class OpenAILLMClient:
         api_key: str,
         base_url: str = "https://api.openai.com/v1",
         timeout_seconds: float = 45.0,
+        session_id: str | None = None,
     ) -> None:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
+        self.session_id = session_id
 
     async def create(
         self,
@@ -136,6 +152,8 @@ class OpenAILLMClient:
             "Content-Type": "application/json",
         }
 
+        request_content = json.dumps(messages)
+
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             response = await client.post(
                 f"{self.base_url}/chat/completions",
@@ -150,16 +168,26 @@ class OpenAILLMClient:
             raise ValueError("OpenAI response did not include choices")
 
         content = choices[0].get("message", {}).get("content")
-        if isinstance(content, str):
-            return content
         if isinstance(content, list):
             text_parts = [
                 part.get("text", "")
                 for part in content
                 if isinstance(part, dict) and part.get("type") == "text"
             ]
-            return "".join(text_parts)
-        raise ValueError("OpenAI response did not include assistant message content")
+            content = "".join(text_parts)
+
+        if not isinstance(content, str):
+            raise ValueError("OpenAI response did not include assistant message content")
+
+        tracker = get_llm_tracker()
+        tracker.track_call(
+            model=model,
+            request_content=request_content,
+            response_content=content,
+            session_id=self.session_id,
+        )
+
+        return content
 
 
 async def extract_patches(

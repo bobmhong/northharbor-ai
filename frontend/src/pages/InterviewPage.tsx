@@ -64,6 +64,40 @@ function extractFieldName(question: string | undefined): string {
   return "answer";
 }
 
+function fieldLabelFromPath(fieldPath?: string | null): string | undefined {
+  switch (fieldPath) {
+    case "client.name":
+      return "name";
+    case "client.birth_year":
+      return "birth year";
+    case "location.state":
+      return "state";
+    case "location.city":
+      return "city";
+    case "income.current_gross_annual":
+      return "annual income";
+    case "retirement_philosophy.legacy_goal_total_real":
+      return "legacy goal";
+    case "accounts.retirement_balance":
+      return "retirement balance";
+    case "accounts.has_employer_plan":
+      return "employer plan";
+    case "accounts.employer_match_percent":
+      return "employer match";
+    case "accounts.employee_contribution_percent":
+      return "contribution rate";
+    case "accounts.savings_rate_percent":
+      return "savings rate";
+    case "spending.retirement_monthly_real":
+      return "monthly spending";
+    case "retirement_philosophy.success_probability_target":
+    case "monte_carlo.required_success_rate":
+      return "success rate";
+    default:
+      return undefined;
+  }
+}
+
 function formatCorrectionValue(value: string, fieldName: string): string {
   const trimmed = value.trim();
   
@@ -177,7 +211,7 @@ export default function InterviewPage() {
         setMessages(historyMessages);
         setResumed(true);
         
-        addMessage("assistant", res.message);
+        addMessage("assistant", res.message, { fieldPath: res.target_field ?? undefined });
         
         requestAnimationFrame(() => {
           if (chatContainerRef.current) {
@@ -185,7 +219,7 @@ export default function InterviewPage() {
           }
         });
       } else {
-        addMessage("assistant", res.message);
+        addMessage("assistant", res.message, { fieldPath: res.target_field ?? undefined });
       }
       
       if (res.interview_complete) setComplete(true);
@@ -196,9 +230,18 @@ export default function InterviewPage() {
     }
   }
 
+  const currentTargetField = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "assistant") {
+        return messages[i].fieldPath;
+      }
+    }
+    return undefined;
+  }, [messages]);
+
   const handleSend = useCallback(
     async (message: string) => {
-      addMessage("user", message);
+      addMessage("user", message, { fieldPath: currentTargetField ?? undefined });
       setLoading(true);
       try {
         let activeSessionId = sessionId;
@@ -209,7 +252,7 @@ export default function InterviewPage() {
           );
           const start = await api.startInterview({ planId: planIdParam });
           setSession(start.session_id, start.plan_id);
-          addMessage("assistant", start.message);
+          addMessage("assistant", start.message, { fieldPath: start.target_field ?? undefined });
           if (start.interview_complete) {
             setComplete(true);
           }
@@ -217,7 +260,7 @@ export default function InterviewPage() {
         }
 
         const res = await api.respond(activeSessionId, message);
-        addMessage("assistant", res.message);
+        addMessage("assistant", res.message, { fieldPath: res.target_field ?? undefined });
         if (res.interview_complete) setComplete(true);
         
         // Invalidate plan data to refresh header (name, scenario, etc.)
@@ -233,9 +276,9 @@ export default function InterviewPage() {
           try {
             const start = await api.startInterview({ planId: planIdParam });
             setSession(start.session_id, start.plan_id);
-            addMessage("assistant", start.message);
+            addMessage("assistant", start.message, { fieldPath: start.target_field ?? undefined });
             const retry = await api.respond(start.session_id, message);
-            addMessage("assistant", retry.message);
+            addMessage("assistant", retry.message, { fieldPath: retry.target_field ?? undefined });
             if (retry.interview_complete) setComplete(true);
             return;
           } catch {
@@ -254,7 +297,7 @@ export default function InterviewPage() {
         setLoading(false);
       }
     },
-    [sessionId, planIdParam, addMessage, setSession, setLoading, setComplete],
+    [sessionId, planIdParam, addMessage, setSession, setLoading, setComplete, currentTargetField],
   );
 
   const handleEditMessage = useCallback(
@@ -264,16 +307,24 @@ export default function InterviewPage() {
       const searchFromIndex = currentMessage?.originalIndex !== undefined 
         ? currentMessage.originalIndex 
         : index;
+      const baseMessage = messages[searchFromIndex];
       
       // Find the preceding assistant message to determine the input mode
       let precedingQuestion: string | undefined;
+      let precedingFieldPath: string | undefined;
       for (let i = searchFromIndex - 1; i >= 0; i--) {
         if (messages[i]?.role === "assistant") {
           precedingQuestion = messages[i].content;
+          precedingFieldPath = messages[i].fieldPath;
           break;
         }
       }
-      setEditing({ index, originalContent: content, precedingQuestion });
+      setEditing({
+        index,
+        originalContent: content,
+        precedingQuestion,
+        precedingFieldPath: baseMessage?.fieldPath ?? precedingFieldPath,
+      });
     },
     [setEditing, messages]
   );
@@ -286,7 +337,9 @@ export default function InterviewPage() {
     async (index: number, newContent: string) => {
       // Get the preceding question before clearing editing state
       const precedingQuestion = editing?.precedingQuestion;
-      const fieldName = extractFieldName(precedingQuestion);
+      const fieldName =
+        fieldLabelFromPath(editing?.precedingFieldPath) ??
+        extractFieldName(precedingQuestion);
       const formattedValue = formatCorrectionValue(newContent, fieldName);
       const correctionMessage = buildCorrectionMessage(fieldName, formattedValue);
       
@@ -308,6 +361,7 @@ export default function InterviewPage() {
         isUpdate: true,
         updateLabel,
         originalIndex: index,
+        fieldPath: messages[index]?.fieldPath,
       });
       addMessage("assistant", correctionMessage);
       
@@ -315,7 +369,7 @@ export default function InterviewPage() {
         setLoading(true);
         try {
           const res = await api.respond(sessionId, `[Correction] My ${fieldName} should be: ${formattedValue}`);
-          addMessage("assistant", res.message);
+          addMessage("assistant", res.message, { fieldPath: res.target_field ?? undefined });
           if (res.interview_complete) setComplete(true);
           
           // Invalidate plan data to refresh header (name, scenario, etc.)
@@ -382,6 +436,10 @@ export default function InterviewPage() {
     const labels: Record<number, string> = {};
     for (let i = 0; i < messages.length; i++) {
       if (messages[i].role === "user") {
+        if (messages[i].fieldPath) {
+          labels[i] = fieldLabelFromPath(messages[i].fieldPath) ?? "answer";
+          continue;
+        }
         // Find preceding assistant message
         let precedingQuestion: string | undefined;
         for (let j = i - 1; j >= 0; j--) {
@@ -478,6 +536,7 @@ export default function InterviewPage() {
                 : "Type your answer..."
             }
             lastAssistantMessage={lastAssistantMessage}
+            currentTargetField={currentTargetField}
             conversationContext={conversationContext}
             editing={editing}
             onCancelEdit={handleCancelEdit}

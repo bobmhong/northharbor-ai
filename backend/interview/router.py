@@ -56,6 +56,7 @@ class StartInterviewResponse(BaseModel):
     session_id: str
     plan_id: str
     message: str
+    target_field: str | None = None
     interview_complete: bool = False
     history: list[HistoryMessage] = Field(default_factory=list)
     is_resumed: bool = False
@@ -68,6 +69,7 @@ class RespondRequest(BaseModel):
 
 class RespondResponse(BaseModel):
     message: str
+    target_field: str | None = None
     applied_fields: list[str] = Field(default_factory=list)
     rejected_fields: list[str] = Field(default_factory=list)
     interview_complete: bool = False
@@ -105,6 +107,7 @@ async def start_interview(req: StartInterviewRequest) -> StartInterviewResponse:
                 session_id=existing_session.session_id,
                 plan_id=plan_id,
                 message=message,
+                target_field=decision.target_field,
                 interview_complete=decision.interview_complete,
                 history=history,
                 is_resumed=True,
@@ -162,6 +165,7 @@ async def start_interview(req: StartInterviewRequest) -> StartInterviewResponse:
         session_id=session.session_id,
         plan_id=plan_id,
         message=turn.assistant_message,
+        target_field=turn.policy_decision.target_field,
         interview_complete=turn.interview_complete,
         history=[],
         is_resumed=False,
@@ -185,6 +189,7 @@ async def respond(req: RespondRequest) -> RespondResponse:
 
     return RespondResponse(
         message=turn.assistant_message,
+        target_field=turn.policy_decision.target_field,
         applied_fields=applied,
         rejected_fields=rejected,
         interview_complete=turn.interview_complete,

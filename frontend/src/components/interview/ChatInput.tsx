@@ -56,6 +56,7 @@ interface EditingState {
   index: number;
   originalContent: string;
   precedingQuestion?: string;
+  precedingFieldPath?: string;
 }
 
 function stripMonetaryFormatting(value: string): string {
@@ -84,13 +85,43 @@ interface ChatInputProps {
   disabled?: boolean;
   placeholder?: string;
   lastAssistantMessage?: string;
+  currentTargetField?: string;
   conversationContext?: string;
   editing?: EditingState | null;
   onCancelEdit?: () => void;
   onSubmitEdit?: (index: number, newContent: string) => void;
 }
 
-function detectInputMode(message?: string, context?: string): { mode: InputMode; stateContext?: string } {
+function detectInputMode(message?: string, context?: string, targetField?: string): { mode: InputMode; stateContext?: string } {
+  // Prefer backend-declared target field over text heuristics.
+  switch (targetField) {
+    case "location.state":
+      return { mode: "state" };
+    case "location.city":
+      return { mode: "city" };
+    case "income.current_gross_annual":
+      return { mode: "income" };
+    case "retirement_philosophy.legacy_goal_total_real":
+      return { mode: "legacy" };
+    case "accounts.retirement_balance":
+      return { mode: "balance" };
+    case "spending.retirement_monthly_real":
+      return { mode: "spending" };
+    case "retirement_philosophy.success_probability_target":
+    case "monte_carlo.required_success_rate":
+      return { mode: "success_rate" };
+    case "accounts.has_employer_plan":
+      return { mode: "employer_plan" };
+    case "accounts.employer_match_percent":
+      return { mode: "employer_match" };
+    case "accounts.employee_contribution_percent":
+      return { mode: "employee_contribution" };
+    case "accounts.savings_rate_percent":
+      return { mode: "percentage" };
+    default:
+      break;
+  }
+
   const text = (message || "").toLowerCase();
   const fullContext = (context || "").toLowerCase();
   
@@ -116,17 +147,21 @@ function detectInputMode(message?: string, context?: string): { mode: InputMode;
   }
   
   // Employer match detection (specific percentage about match)
-  if (lastSentence.includes("employer match") || lastSentence.includes("company match") ||
-      lastSentence.includes("matching contribution") || lastSentence.includes("does your employer match") ||
-      lastSentence.includes("what percentage does your employer")) {
+  // Check full text since questions may span multiple sentences
+  if (text.includes("employer match") || text.includes("company match") ||
+      text.includes("matching contribution") || text.includes("does your employer match") ||
+      text.includes("what percentage does your employer") ||
+      (text.includes("match") && text.includes("contributions"))) {
     return { mode: "employer_match" };
   }
   
   // Employee contribution detection (how much YOU contribute to employer plan)
-  if (lastSentence.includes("do you contribute") || lastSentence.includes("your contribution") ||
-      lastSentence.includes("contribute to your retirement plan") || 
-      lastSentence.includes("employee contribution") ||
-      (lastSentence.includes("contribute") && lastSentence.includes("retirement"))) {
+  // Check full text since the question may have multiple sentences with match context
+  if (text.includes("do you contribute") || text.includes("your contribution") ||
+      text.includes("contribute to your retirement plan") || 
+      text.includes("employee contribution") ||
+      text.includes("captures the full match") ||
+      (text.includes("percentage of your income") && text.includes("contribute"))) {
     return { mode: "employee_contribution" };
   }
   
@@ -205,6 +240,7 @@ export default function ChatInput({
   disabled = false,
   placeholder = "Type your answer...",
   lastAssistantMessage,
+  currentTargetField,
   conversationContext,
   editing,
   onCancelEdit,
@@ -237,10 +273,11 @@ export default function ChatInput({
   
   // When editing, use the preceding question to determine mode; otherwise use lastAssistantMessage
   const modeMessage = editing?.precedingQuestion ?? lastAssistantMessage;
+  const modeTargetField = editing?.precedingFieldPath ?? currentTargetField;
   
   const { mode, stateContext } = useMemo(
-    () => detectInputMode(modeMessage, conversationContext),
-    [modeMessage, conversationContext]
+    () => detectInputMode(modeMessage, conversationContext, modeTargetField),
+    [modeMessage, conversationContext, modeTargetField]
   );
 
   // Set default value for percentage modes immediately
@@ -632,7 +669,7 @@ export default function ChatInput({
               aria-label="Success rate slider"
               title="Plan success probability"
             />
-            <div className="flex items-center gap-2 min-w-[80px]">
+            <div className="flex items-center gap-2 min-w-[96px]">
               <input
                 ref={inputRef}
                 type="number"
@@ -641,7 +678,7 @@ export default function ChatInput({
                 value={value || "90"}
                 onChange={(e) => setValue(e.target.value)}
                 disabled={disabled}
-                className="input-field w-16 text-center"
+                className="input-field w-20 text-center"
                 autoFocus
                 aria-label="Success rate value"
                 title="Enter success rate"
@@ -753,7 +790,7 @@ export default function ChatInput({
               aria-label="Employer match slider"
               title="Employer match percentage"
             />
-            <div className="flex items-center gap-2 min-w-[80px]">
+            <div className="flex items-center gap-2 min-w-[96px]">
               <input
                 ref={inputRef}
                 type="number"
@@ -763,7 +800,7 @@ export default function ChatInput({
                 value={value || "3"}
                 onChange={(e) => setValue(e.target.value)}
                 disabled={disabled}
-                className="input-field w-16 text-center"
+                className="input-field w-20 text-center"
                 autoFocus
                 aria-label="Match percentage value"
                 title="Enter match percentage"
@@ -801,10 +838,6 @@ export default function ChatInput({
   }
 
   if (mode === "employee_contribution") {
-    const defaultContrib = 6;
-    const contribValue = value ? parseInt(value, 10) : defaultContrib;
-    const displayContrib = isNaN(contribValue) ? defaultContrib : Math.max(0, Math.min(50, contribValue));
-    
     // Try to extract employer match from conversation context for guidance
     const matchFromContext = conversationContext?.match(/(\d+(?:\.\d+)?)\s*%?\s*(?:match|matching)/i);
     const employerMatch = matchFromContext ? parseFloat(matchFromContext[1]) : null;
@@ -812,6 +845,11 @@ export default function ChatInput({
     // Calculate minimum to get full match (typically need to contribute enough to get full match)
     // Common scenarios: 50% match up to 6% = need 6% to get 3% match, or 100% match up to 3% = need 3% to get 3%
     const minForFullMatch = employerMatch ? Math.ceil(employerMatch * 2) : null;
+    
+    // Default to the recommended minimum to capture full match, or 6% if no match info
+    const defaultContrib = minForFullMatch || 6;
+    const contribValue = value ? parseInt(value, 10) : defaultContrib;
+    const displayContrib = isNaN(contribValue) ? defaultContrib : Math.max(0, Math.min(50, contribValue));
     const isGettingFullMatch = minForFullMatch ? displayContrib >= minForFullMatch : true;
     
     return (
@@ -857,16 +895,16 @@ export default function ChatInput({
               aria-label="Contribution slider"
               title="Your contribution percentage"
             />
-            <div className="flex items-center gap-2 min-w-[80px]">
+            <div className="flex items-center gap-2 min-w-[96px]">
               <input
                 ref={inputRef}
                 type="number"
                 min="0"
                 max="100"
-                value={value || "6"}
+                value={value || String(defaultContrib)}
                 onChange={(e) => setValue(e.target.value)}
                 disabled={disabled}
-                className="input-field w-16 text-center"
+                className="input-field w-20 text-center"
                 autoFocus
                 aria-label="Contribution percentage value"
                 title="Enter contribution percentage"
@@ -885,10 +923,11 @@ export default function ChatInput({
               type="button"
               onClick={() => {
                 if (disabled) return;
+                const submitVal = value || String(defaultContrib);
                 if (editing && onSubmitEdit) {
-                  onSubmitEdit(editing.index, `${value || "6"}%`);
+                  onSubmitEdit(editing.index, `${submitVal}%`);
                 } else {
-                  onSend(`${value || "6"}%`);
+                  onSend(`${submitVal}%`);
                 }
                 setValue("");
               }}
@@ -932,7 +971,7 @@ export default function ChatInput({
               aria-label="Percentage slider"
               title="Savings percentage"
             />
-            <div className="flex items-center gap-2 min-w-[80px]">
+            <div className="flex items-center gap-2 min-w-[96px]">
               <input
                 ref={inputRef}
                 type="number"
@@ -941,7 +980,7 @@ export default function ChatInput({
                 value={value || "6"}
                 onChange={(e) => setValue(e.target.value)}
                 disabled={disabled}
-                className="input-field w-16 text-center"
+                className="input-field w-20 text-center"
                 autoFocus
                 aria-label="Percentage value"
                 title="Enter percentage"

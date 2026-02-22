@@ -63,6 +63,9 @@ def _is_populated(value: Any) -> bool:
             return False
         if isinstance(v, str) and v.strip() == "":
             return False
+        # Explicitly handle booleans before int check (bool is subclass of int)
+        if isinstance(v, bool):
+            return True  # Both True and False are valid populated values
         if isinstance(v, (int, float)) and v == 0:
             return False
         return True

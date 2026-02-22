@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from backend.analytics.router import router as analytics_router
 from backend.api.middleware import RequestLoggingMiddleware
 from backend.interview.router import router as interview_router
 from backend.pipelines.router import router as pipelines_router
@@ -32,6 +33,7 @@ def create_app() -> FastAPI:
 
     app.include_router(interview_router)
     app.include_router(pipelines_router)
+    app.include_router(analytics_router)
 
     @app.get("/api/health")
     async def health_check() -> dict[str, str]:

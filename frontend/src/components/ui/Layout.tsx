@@ -7,6 +7,7 @@ import logoCropped from "../../../../logo-cropped.jpeg";
 
 const NAV_ITEMS = [
   { path: "/plans", label: "Plans" },
+  ...(import.meta.env.DEV ? [{ path: "/admin/analytics", label: "Analytics" }] : []),
 ];
 
 const BREADCRUMB_MAP: Record<string, { label: string; parent?: string }> = {
@@ -14,6 +15,7 @@ const BREADCRUMB_MAP: Record<string, { label: string; parent?: string }> = {
   "/interview": { label: "Interview", parent: "/plans" },
   "/dashboard": { label: "Dashboard", parent: "/plans" },
   "/report": { label: "Report", parent: "/plans" },
+  "/admin/analytics": { label: "LLM Analytics" },
 };
 
 function getBreadcrumbs(pathname: string) {

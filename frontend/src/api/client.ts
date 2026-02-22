@@ -1,4 +1,5 @@
 import type {
+  LLMAnalyticsResponse,
   PipelineResult,
   PlanSummary,
   ReportArtifact,
@@ -80,5 +81,9 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ owner_id: ownerId, scenario_name: scenarioName }),
     });
+  },
+
+  getLLMAnalytics() {
+    return request<LLMAnalyticsResponse>("/admin/analytics/llm");
   },
 };

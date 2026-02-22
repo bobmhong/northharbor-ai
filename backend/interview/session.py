@@ -129,6 +129,19 @@ def _parse_percent_as_ratio(user_message: str) -> float | None:
     return None
 
 
+def _parse_percent_raw(user_message: str) -> float | None:
+    """Parse percentage as raw number (e.g., '6%' -> 6.0, '3' -> 3.0)."""
+    value = _parse_number(user_message)
+    if value is None:
+        return None
+    # Strip % sign - we want the raw number
+    if value > 100:
+        return None
+    if value < 0:
+        return None
+    return value
+
+
 def _parse_word_text(user_message: str) -> str | None:
     normalized = " ".join(user_message.strip().split())
     if not normalized:
@@ -195,6 +208,14 @@ def _fallback_patch_for_target(
             return PatchOp(op="set", path=target_field, value="own", confidence=0.9)
         return None
 
+    if target_field == "accounts.has_employer_plan":
+        normalized = user_message.strip().lower()
+        if normalized in {"yes", "y", "yeah", "yep", "yup", "sure", "correct", "true"}:
+            return PatchOp(op="set", path=target_field, value=True, confidence=0.95)
+        if normalized in {"no", "n", "nope", "nah", "false", "none"}:
+            return PatchOp(op="set", path=target_field, value=False, confidence=0.95)
+        return None
+
     if target_field == "client.retirement_window":
         window = _parse_retirement_window(user_message)
         if window:
@@ -223,6 +244,16 @@ def _fallback_patch_for_target(
         ratio = _parse_percent_as_ratio(user_message)
         if ratio is not None:
             return PatchOp(op="set", path=target_field, value=ratio, confidence=0.85)
+        return None
+
+    if target_field in {
+        "accounts.employer_match_percent",
+        "accounts.employee_contribution_percent",
+    }:
+        # These are stored as raw percentages (e.g., 6 for 6%), not ratios
+        pct = _parse_percent_raw(user_message)
+        if pct is not None:
+            return PatchOp(op="set", path=target_field, value=pct, confidence=0.85)
         return None
 
     if target_field in {"monte_carlo.horizon_age", "social_security.claiming_preference"}:
@@ -359,6 +390,20 @@ def _invalid_input_feedback(
         if horizon_age is not None and not (80 <= int(horizon_age) <= 120):
             return "Projection horizon age is usually between 80 and 120."
         return "Please provide an age for the projection horizon, usually between 80 and 120."
+
+    if target_field == "accounts.has_employer_plan":
+        return "Please answer \"yes\" or \"no\" for whether you have an employer retirement plan."
+
+    if target_field in {
+        "accounts.employer_match_percent",
+        "accounts.employee_contribution_percent",
+    }:
+        pct_number = _parse_number(text)
+        if pct_number is not None and pct_number > 100:
+            return "That percentage is above 100%. Please enter a realistic percentage."
+        if pct_number is not None and pct_number < 0:
+            return "Please enter a positive percentage."
+        return "Please enter a percentage, like \"6%\" or \"3\"."
 
     return None
 
