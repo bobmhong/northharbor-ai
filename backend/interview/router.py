@@ -181,6 +181,9 @@ async def respond(req: RespondRequest) -> RespondResponse:
 
     turn = await session.respond(req.message)
 
+    if turn.interview_complete and session.schema.status == "intake_in_progress":
+        session.schema.status = "intake_complete"
+
     store_plan(session.schema)
     store_session(session)
 

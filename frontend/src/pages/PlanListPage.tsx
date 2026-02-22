@@ -139,8 +139,8 @@ export default function PlanListPage() {
       {plans && plans.length > 0 && (
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {plans.map((plan) => {
-            const isInProgress = plan.status === "intake_in_progress";
-            const targetPath = isInProgress
+            const needsInterview = plan.status === "intake_in_progress" || plan.status === "intake_complete";
+            const targetPath = needsInterview
               ? `/interview?plan_id=${plan.plan_id}`
               : `/dashboard/${plan.plan_id}`;
             
@@ -178,12 +178,20 @@ export default function PlanListPage() {
                   </span>
                 </div>
                 
-                {isInProgress && (
+                {plan.status === "intake_in_progress" && (
                   <div className="mt-3 flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700">
                     <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     <span>Interview in progress — click to continue</span>
+                  </div>
+                )}
+                {plan.status === "intake_complete" && (
+                  <div className="mt-3 flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-700">
+                    <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>Ready for analysis — click to run projections</span>
                   </div>
                 )}
                 

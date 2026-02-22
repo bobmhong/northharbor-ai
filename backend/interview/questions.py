@@ -23,8 +23,9 @@ def welcome_message() -> str:
 def completion_message() -> str:
     return (
         "Great — I have all the information I need to build your "
-        "retirement plan. You can now run the analysis pipeline to "
-        "see your projections and recommendations."
+        "retirement plan! I'm ready to run Monte Carlo simulations "
+        "and generate your personalized projections. When you're "
+        "ready, click **Run Analysis** below to see your results."
     )
 
 
