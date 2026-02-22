@@ -1,6 +1,6 @@
 # Roadmap
 
-This document outlines the current and planned work for NorthHarbor AI.
+This document outlines the current and planned work for NorthHarbor Sage.
 
 ## Current Phase: Foundation
 

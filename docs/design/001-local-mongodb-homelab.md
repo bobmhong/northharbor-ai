@@ -11,7 +11,7 @@ This design adds a first-class local MongoDB runtime option for homelab users wh
 
 ## Motivation
 
-NorthHarbor AI currently uses in-memory runtime stores in API dependency wiring, which is convenient for development but does not persist data across restarts. Homelab users need a local, self-hosted persistence option that is easy to run, secure by default, and aligned with the existing MongoDB store implementations already present in the backend.
+NorthHarbor Sage currently uses in-memory runtime stores in API dependency wiring, which is convenient for development but does not persist data across restarts. Homelab users need a local, self-hosted persistence option that is easy to run, secure by default, and aligned with the existing MongoDB store implementations already present in the backend.
 
 ## Goals
 
@@ -69,7 +69,7 @@ New configuration model fields:
 class Settings(BaseSettings):
     store_backend: Literal["memory", "mongodb"] = "memory"
     mongodb_uri: str = "mongodb://localhost:27017"
-    mongodb_database: str = "northharbor_ai"
+    mongodb_database: str = "northharbor_sage"
 ```
 
 ### API Changes
@@ -85,7 +85,7 @@ Response: {
   "store_backend": "memory|mongodb",
   "mongodb": {
     "connected": true|false,
-    "database": "northharbor_ai"
+    "database": "northharbor_sage"
   }
 }
 ```

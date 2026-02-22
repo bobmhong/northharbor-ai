@@ -1,6 +1,6 @@
-# NorthHarbor AI Overview
+# NorthHarbor Sage Overview
 
-NorthHarbor AI is an AI-powered retirement planning assistant that guides users through a comprehensive intake process, runs financial projections with Monte Carlo simulations, and generates personalized retirement plan deliverables.
+NorthHarbor Sage is an AI-powered retirement planning assistant that guides users through a comprehensive intake process, runs financial projections with Monte Carlo simulations, and generates personalized retirement plan deliverables.
 
 ## Key Capabilities
 

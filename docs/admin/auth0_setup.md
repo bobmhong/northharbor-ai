@@ -1,6 +1,6 @@
 # Auth0 Tenant Setup Guide
 
-Step-by-step guide to configure Auth0 for North Harbor AI.
+Step-by-step guide to configure Auth0 for NorthHarbor Sage.
 
 ## 1. Create Auth0 Tenant
 
@@ -10,7 +10,7 @@ Step-by-step guide to configure Auth0 for North Harbor AI.
 ## 2. Create SPA Application
 
 1. Go to **Applications > Create Application**.
-2. Name: `North Harbor AI`
+2. Name: `NorthHarbor Sage`
 3. Type: **Single Page Web Applications**
 4. Note the **Client ID** (you'll need it for `.env`).
 5. Under **Settings**:
@@ -21,8 +21,8 @@ Step-by-step guide to configure Auth0 for North Harbor AI.
 ## 3. Create API
 
 1. Go to **Applications > APIs > Create API**.
-2. Name: `North Harbor AI API`
-3. Identifier (Audience): `https://api.northharbor.ai`
+2. Name: `NorthHarbor Sage API`
+3. Identifier (Audience): `https://sage-api.northharbor.dev`
 4. Signing Algorithm: **RS256**
 
 ## 4. Enable Social Connections
@@ -30,7 +30,7 @@ Step-by-step guide to configure Auth0 for North Harbor AI.
 1. Go to **Authentication > Social**.
 2. Enable **Google**, **GitHub**, **Facebook** (or whichever you need).
 3. For each, provide the OAuth client ID/secret from the respective provider's developer console.
-4. Make sure each connection is enabled for the `North Harbor AI` application.
+4. Make sure each connection is enabled for the `NorthHarbor Sage` application.
 
 ## 5. Create Post-Login Action (Assign Roles)
 
@@ -39,7 +39,7 @@ Step-by-step guide to configure Auth0 for North Harbor AI.
 
 ```javascript
 exports.onExecutePostLogin = async (event, api) => {
-  const namespace = 'https://northharbor.ai/roles';
+  const namespace = 'https://northharbor.dev/roles';
 
   // First login: assign default client role
   if (event.stats.logins_count === 1) {
@@ -77,10 +77,10 @@ cp .env.example .env
 
 ```
 AUTH0_DOMAIN=northharbor-dev.auth0.com
-AUTH0_API_AUDIENCE=https://api.northharbor.ai
+AUTH0_API_AUDIENCE=https://sage-api.northharbor.dev
 AUTH0_ALGORITHMS=RS256
 MONGODB_URI=mongodb://localhost:27017
-MONGODB_DATABASE=northharbor_ai
+MONGODB_DATABASE=northharbor_sage
 ```
 
 ## 9. Promote First Admin

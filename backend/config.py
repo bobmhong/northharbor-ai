@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     auth0_algorithms: str = "RS256"
 
     mongodb_uri: str = "mongodb://localhost:27017"
-    mongodb_database: str = "northharbor_ai"
+    mongodb_database: str = "northharbor_sage"
 
     store_backend: str = "memory"
     app_env: str = "development"

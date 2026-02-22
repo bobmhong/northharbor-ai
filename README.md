@@ -43,13 +43,13 @@ Optional LLM providers:
 
 ```bash
 # Clone upstream
-git clone https://github.com/bobmhong/northharbor-ai.git
+git clone https://github.com/bobmhong/northharbor-sage.git
 
 # Or fork first, then clone your fork
-# git clone https://github.com/YOUR_USERNAME/northharbor-ai.git
+# git clone https://github.com/YOUR_USERNAME/northharbor-sage.git
 
 # Enter repo
-cd northharbor-ai
+cd northharbor-sage
 
 # Install backend + frontend dependencies
 task setup

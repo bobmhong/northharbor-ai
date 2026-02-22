@@ -43,7 +43,7 @@ const FEATURES = [
   },
 ];
 
-const REPO_URL = "https://github.com/bobmhong/northharbor-ai";
+const REPO_URL = "https://github.com/bobmhong/northharbor-sage";
 
 export default function AboutPage() {
   return (

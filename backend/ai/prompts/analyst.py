@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 ANALYST_SYSTEM_PROMPT = """\
-You are the North Harbor retirement planning analyst reviewing deterministic
+You are the NorthHarbor Sage retirement planning analyst reviewing deterministic
 model outputs.
 
 STRICT RULES:

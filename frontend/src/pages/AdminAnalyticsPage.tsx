@@ -117,7 +117,7 @@ export default function AdminAnalyticsPage() {
     <div>
       <div className="mb-6 sm:mb-8">
         <h1 className="page-title">LLM Analytics</h1>
-        <p className="text-sage-600 mt-1">Monitor AI usage metrics for the NorthHarbor application.</p>
+        <p className="text-sage-600 mt-1">Monitor AI usage metrics for NorthHarbor Sage.</p>
       </div>
 
       {isLoading && (

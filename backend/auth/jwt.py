@@ -11,7 +11,7 @@ from jose import JWTError, jwt
 from backend.auth.models import Auth0Claims, UserRole
 from backend.config import get_settings
 
-ROLES_CLAIM_NAMESPACE = "https://northharbor.ai/roles"
+ROLES_CLAIM_NAMESPACE = "https://northharbor.dev/roles"
 
 _jwks_cache: dict[str, Any] = {}
 _jwks_cache_expiry: float = 0

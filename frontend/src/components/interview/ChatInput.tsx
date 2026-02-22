@@ -900,8 +900,9 @@ export default function ChatInput({
           </div>
           <div className="space-y-2">
             <div className="flex items-center gap-3">
-              <label className="text-xs text-sage-600 w-14 text-right shrink-0">Earliest</label>
+              <label htmlFor="retire-age-min" className="text-xs text-sage-600 w-14 text-right shrink-0">Earliest</label>
               <input
+                id="retire-age-min"
                 type="range"
                 min="50"
                 max="80"
@@ -923,8 +924,9 @@ export default function ChatInput({
               />
             </div>
             <div className="flex items-center gap-3">
-              <label className="text-xs text-sage-600 w-14 text-right shrink-0">Latest</label>
+              <label htmlFor="retire-age-max" className="text-xs text-sage-600 w-14 text-right shrink-0">Latest</label>
               <input
+                id="retire-age-max"
                 type="range"
                 min="50"
                 max="80"

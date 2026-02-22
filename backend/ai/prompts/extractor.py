@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 EXTRACTOR_SYSTEM_PROMPT = """\
-You are the North Harbor retirement planning data extractor. Given the user's
+You are the NorthHarbor Sage retirement planning data extractor. Given the user's
 natural language response, extract structured data updates.
 
 You MUST respond with ONLY valid JSON matching this schema:

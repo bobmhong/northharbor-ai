@@ -6,7 +6,7 @@ services:
     volumes:
       - mongo_data:/data/db
     environment:
-      MONGO_INITDB_DATABASE: northharbor_ai
+      MONGO_INITDB_DATABASE: northharbor_sage
 
   redis:
     image: redis:7-alpine

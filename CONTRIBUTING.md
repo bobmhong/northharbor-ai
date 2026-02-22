@@ -1,16 +1,16 @@
-# Contributing to NorthHarbor AI
+# Contributing to NorthHarbor Sage
 
-Thank you for your interest in contributing to NorthHarbor AI!
+Thank you for your interest in contributing to NorthHarbor Sage!
 
 ## Getting Started
 
 1. Choose one clone workflow:
    - Clone the canonical upstream repository:
-     `git clone https://github.com/bobmhong/northharbor-ai.git`
+     `git clone https://github.com/bobmhong/northharbor-sage.git`
    - Or fork first, then clone your fork:
-     `git clone https://github.com/YOUR_USERNAME/northharbor-ai.git`
+     `git clone https://github.com/YOUR_USERNAME/northharbor-sage.git`
 2. If you forked, add upstream so you can sync future changes:
-   `git remote add upstream https://github.com/bobmhong/northharbor-ai.git`
+   `git remote add upstream https://github.com/bobmhong/northharbor-sage.git`
 3. Ensure prerequisites are installed:
    - Python 3.11+
    - Node.js 20+ and npm

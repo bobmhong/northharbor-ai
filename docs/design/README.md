@@ -1,6 +1,6 @@
 # Design Documents
 
-This folder contains technical design documents for significant features and architectural decisions in NorthHarbor AI.
+This folder contains technical design documents for significant features and architectural decisions in NorthHarbor Sage.
 
 ## When to Write a Design Doc
 

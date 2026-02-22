@@ -18,7 +18,7 @@ from backend.auth.jwt import (
 from backend.auth.models import UserRole
 from backend.tests.auth._test_keys import TEST_JWKS, TEST_PEM_PRIVATE_KEY
 
-_DEFAULT_AUDIENCE = "https://api.northharbor.ai"
+_DEFAULT_AUDIENCE = "https://sage-api.northharbor.dev"
 _DEFAULT_ISSUER = "https://test-tenant.auth0.com/"
 
 

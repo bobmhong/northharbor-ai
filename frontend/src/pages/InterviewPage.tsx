@@ -380,7 +380,7 @@ export default function InterviewPage() {
             "Your interview session expired after a backend reload. Starting a new session now...",
           );
           try {
-            let start = await api.startInterview({ planId: planIdParam }).catch(async () => {
+            const start = await api.startInterview({ planId: planIdParam }).catch(async () => {
               setSearchParams({}, { replace: true });
               return api.startInterview({});
             });

@@ -7,11 +7,11 @@
 
 ## Summary
 
-Introduce a provider-agnostic authentication layer in the backend so NorthHarbor AI can accept tokens from Auth0 (current) and Cloudflare Access (alternate), while preserving existing role-based authorization behavior and tenant scoping.
+Introduce a provider-agnostic authentication layer in the backend so NorthHarbor Sage can accept tokens from Auth0 (current) and Cloudflare Access (alternate), while preserving existing role-based authorization behavior and tenant scoping.
 
 ## Motivation
 
-NorthHarbor AI currently assumes Auth0-specific configuration, token verification, and claim naming across multiple modules. This creates provider lock-in and makes it harder to support teams that already use Cloudflare Zero Trust for access control. Adding a Cloudflare Access option enables lower-friction deployment in Cloudflare-centric environments while keeping Auth0 as the default path.
+NorthHarbor Sage currently assumes Auth0-specific configuration, token verification, and claim naming across multiple modules. This creates provider lock-in and makes it harder to support teams that already use Cloudflare Zero Trust for access control. Adding a Cloudflare Access option enables lower-friction deployment in Cloudflare-centric environments while keeping Auth0 as the default path.
 
 ## Goals
 

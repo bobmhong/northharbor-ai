@@ -1,4 +1,4 @@
-"""Protocol definitions for North Harbor AI data stores.
+"""Protocol definitions for NorthHarbor Sage data stores.
 
 Each protocol describes the contract for a single data domain.  Concrete
 implementations (in-memory, MongoDB) satisfy these protocols through

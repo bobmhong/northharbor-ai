@@ -1,6 +1,6 @@
 # Architecture
 
-This document provides a high-level overview of the NorthHarbor AI system architecture.
+This document provides a high-level overview of the NorthHarbor Sage system architecture.
 
 ## System Overview
 
