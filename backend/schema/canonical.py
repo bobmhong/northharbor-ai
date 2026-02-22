@@ -71,6 +71,7 @@ class AccountsProfile(BaseModel):
 
     retirement_type: ProvenanceField | None = None
     retirement_balance: ProvenanceField
+    has_employer_plan: ProvenanceField | None = None
     monthly_contribution: ProvenanceField | None = None
     annual_contribution: ProvenanceField | None = None
     employee_contribution_percent: ProvenanceField | None = None

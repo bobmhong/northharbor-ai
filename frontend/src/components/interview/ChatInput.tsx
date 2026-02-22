@@ -2,7 +2,7 @@ import { useRef, useState, useEffect, type FormEvent, useMemo } from "react";
 import Typeahead from "../ui/Typeahead";
 import { getStatesForAutocomplete, getCitiesForState } from "../../data/locations";
 
-type InputMode = "text" | "state" | "city" | "income" | "legacy" | "balance" | "spending" | "percentage" | "success_rate";
+type InputMode = "text" | "state" | "city" | "income" | "legacy" | "balance" | "spending" | "percentage" | "success_rate" | "employer_plan" | "employer_match" | "employee_contribution";
 
 const INCOME_SUGGESTIONS = [
   { value: "50000", label: "$50,000" },
@@ -107,7 +107,30 @@ function detectInputMode(message?: string, context?: string): { mode: InputMode;
     return { mode: "success_rate" };
   }
   
-  // Percentage/savings rate detection - check early (common pattern after balance question)
+  // Employer plan detection (yes/no question)
+  if (lastSentence.includes("employer offer") || lastSentence.includes("employer retirement") ||
+      lastSentence.includes("401(k)") || lastSentence.includes("401k") ||
+      lastSentence.includes("employer savings plan") || lastSentence.includes("workplace retirement") ||
+      (lastSentence.includes("employer") && lastSentence.includes("plan"))) {
+    return { mode: "employer_plan" };
+  }
+  
+  // Employer match detection (specific percentage about match)
+  if (lastSentence.includes("employer match") || lastSentence.includes("company match") ||
+      lastSentence.includes("matching contribution") || lastSentence.includes("does your employer match") ||
+      lastSentence.includes("what percentage does your employer")) {
+    return { mode: "employer_match" };
+  }
+  
+  // Employee contribution detection (how much YOU contribute to employer plan)
+  if (lastSentence.includes("do you contribute") || lastSentence.includes("your contribution") ||
+      lastSentence.includes("contribute to your retirement plan") || 
+      lastSentence.includes("employee contribution") ||
+      (lastSentence.includes("contribute") && lastSentence.includes("retirement"))) {
+    return { mode: "employee_contribution" };
+  }
+  
+  // Percentage/savings rate detection - general savings rate
   if (lastSentence.includes("percentage") || lastSentence.includes("savings rate") || 
       lastSentence.includes("% of your income") || lastSentence.match(/what percent/i) ||
       lastSentence.includes("how much do you save") || lastSentence.includes("contribution rate") ||
@@ -229,6 +252,66 @@ export default function ChatInput({
       setValue("90");
     }
   }, [mode, value, editing]);
+
+  // Handle Escape key to cancel editing
+  useEffect(() => {
+    if (!editing) return;
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && onCancelEdit) {
+        e.preventDefault();
+        onCancelEdit();
+      }
+    };
+    
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [editing, onCancelEdit]);
+
+  // Handle Enter key to submit default values for slider/button modes
+  useEffect(() => {
+    // Only handle for modes that don't have a standard form submit
+    const enterModes = ["employer_plan", "employer_match", "employee_contribution", "percentage", "success_rate"];
+    if (!enterModes.includes(mode)) return;
+    if (disabled) return;
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger if user is in a number input (let them type)
+      const target = e.target as HTMLElement;
+      if (target.tagName === "INPUT" && (target as HTMLInputElement).type === "number") {
+        // For number inputs, Enter should submit
+        if (e.key !== "Enter") return;
+      } else if (e.key !== "Enter") {
+        return;
+      }
+      
+      e.preventDefault();
+      
+      // Get the default/current value based on mode
+      let submitValue = "";
+      if (mode === "employer_plan") {
+        submitValue = "Yes"; // Default to Yes for employer plan
+      } else if (mode === "employer_match") {
+        submitValue = `${value || "3"}%`;
+      } else if (mode === "employee_contribution") {
+        submitValue = `${value || "6"}%`;
+      } else if (mode === "percentage") {
+        submitValue = `${value || "6"}%`;
+      } else if (mode === "success_rate") {
+        submitValue = `${value || "90"}%`;
+      }
+      
+      if (editing && onSubmitEdit) {
+        onSubmitEdit(editing.index, submitValue);
+      } else {
+        onSend(submitValue);
+      }
+      setValue("");
+    };
+    
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [mode, value, disabled, editing, onSubmitEdit, onSend]);
 
   const stateOptions = useMemo(() => getStatesForAutocomplete(), []);
   const cityOptions = useMemo(
@@ -581,6 +664,231 @@ export default function ChatInput({
                   onSubmitEdit(editing.index, `${value || "90"}%`);
                 } else {
                   onSend(`${value || "90"}%`);
+                }
+                setValue("");
+              }}
+              disabled={editing ? isSubmitDisabled : disabled}
+              className={editing ? "btn-primary flex-1" : "btn-primary w-full"}
+            >
+              {submitButtonText}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (mode === "employer_plan") {
+    return (
+      <div>
+        {editingHeader}
+        <div className="space-y-3">
+          <div className="flex gap-3 justify-center">
+            <button
+              type="button"
+              onClick={() => {
+                if (disabled) return;
+                if (editing && onSubmitEdit) {
+                  onSubmitEdit(editing.index, "Yes");
+                } else {
+                  onSend("Yes");
+                }
+              }}
+              disabled={disabled}
+              className="btn-primary px-8"
+            >
+              Yes
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (disabled) return;
+                if (editing && onSubmitEdit) {
+                  onSubmitEdit(editing.index, "No");
+                } else {
+                  onSend("No");
+                }
+              }}
+              disabled={disabled}
+              className="btn-ghost px-8 border border-sage-300"
+            >
+              No
+            </button>
+          </div>
+          {cancelButton && (
+            <div className="flex justify-center">
+              {cancelButton}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (mode === "employer_match") {
+    const defaultMatch = 3;
+    const matchValue = value ? parseInt(value, 10) : defaultMatch;
+    const displayMatch = isNaN(matchValue) ? defaultMatch : Math.max(0, Math.min(10, matchValue));
+    
+    return (
+      <div>
+        {editingHeader}
+        <div className="space-y-3">
+          <div className="text-center">
+            <span className="text-2xl font-bold text-harbor-700">{displayMatch}%</span>
+          </div>
+          <div className="text-center text-xs text-sage-600">
+            Common match: 3% (50% of 6%) or 6% (dollar-for-dollar up to 6%)
+          </div>
+          <div className="flex items-center gap-4">
+            <input
+              type="range"
+              min="0"
+              max="10"
+              step="0.5"
+              value={displayMatch}
+              onChange={(e) => setValue(e.target.value)}
+              disabled={disabled}
+              className="flex-1 h-2 bg-sage-200 rounded-lg appearance-none cursor-pointer accent-harbor-500"
+              aria-label="Employer match slider"
+              title="Employer match percentage"
+            />
+            <div className="flex items-center gap-2 min-w-[80px]">
+              <input
+                ref={inputRef}
+                type="number"
+                min="0"
+                max="10"
+                step="0.5"
+                value={value || "3"}
+                onChange={(e) => setValue(e.target.value)}
+                disabled={disabled}
+                className="input-field w-16 text-center"
+                autoFocus
+                aria-label="Match percentage value"
+                title="Enter match percentage"
+              />
+              <span className="text-harbor-700 font-medium">%</span>
+            </div>
+          </div>
+          <div className="flex justify-between text-xs text-sage-500">
+            <span>0%</span>
+            <span>5%</span>
+            <span>10%</span>
+          </div>
+          <div className="flex gap-2 sm:gap-3">
+            {cancelButton}
+            <button
+              type="button"
+              onClick={() => {
+                if (disabled) return;
+                if (editing && onSubmitEdit) {
+                  onSubmitEdit(editing.index, `${value || "3"}%`);
+                } else {
+                  onSend(`${value || "3"}%`);
+                }
+                setValue("");
+              }}
+              disabled={editing ? isSubmitDisabled : disabled}
+              className={editing ? "btn-primary flex-1" : "btn-primary w-full"}
+            >
+              {submitButtonText}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (mode === "employee_contribution") {
+    const defaultContrib = 6;
+    const contribValue = value ? parseInt(value, 10) : defaultContrib;
+    const displayContrib = isNaN(contribValue) ? defaultContrib : Math.max(0, Math.min(50, contribValue));
+    
+    // Try to extract employer match from conversation context for guidance
+    const matchFromContext = conversationContext?.match(/(\d+(?:\.\d+)?)\s*%?\s*(?:match|matching)/i);
+    const employerMatch = matchFromContext ? parseFloat(matchFromContext[1]) : null;
+    
+    // Calculate minimum to get full match (typically need to contribute enough to get full match)
+    // Common scenarios: 50% match up to 6% = need 6% to get 3% match, or 100% match up to 3% = need 3% to get 3%
+    const minForFullMatch = employerMatch ? Math.ceil(employerMatch * 2) : null;
+    const isGettingFullMatch = minForFullMatch ? displayContrib >= minForFullMatch : true;
+    
+    return (
+      <div>
+        {editingHeader}
+        <div className="space-y-3">
+          <div className="text-center">
+            <span className="text-2xl font-bold text-harbor-700">{displayContrib}%</span>
+          </div>
+          {/* Match guidance */}
+          {employerMatch && (
+            <div className={`text-center text-sm px-3 py-2 rounded-lg ${
+              isGettingFullMatch 
+                ? "bg-emerald-50 text-emerald-700" 
+                : "bg-amber-50 text-amber-700"
+            }`}>
+              {isGettingFullMatch ? (
+                <span className="flex items-center justify-center gap-1.5">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  You're capturing the full employer match
+                </span>
+              ) : (
+                <span className="flex items-center justify-center gap-1.5">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  Contribute at least {minForFullMatch}% to capture your full match
+                </span>
+              )}
+            </div>
+          )}
+          <div className="flex items-center gap-4">
+            <input
+              type="range"
+              min="0"
+              max="50"
+              value={displayContrib}
+              onChange={(e) => setValue(e.target.value)}
+              disabled={disabled}
+              className="flex-1 h-2 bg-sage-200 rounded-lg appearance-none cursor-pointer accent-harbor-500"
+              aria-label="Contribution slider"
+              title="Your contribution percentage"
+            />
+            <div className="flex items-center gap-2 min-w-[80px]">
+              <input
+                ref={inputRef}
+                type="number"
+                min="0"
+                max="100"
+                value={value || "6"}
+                onChange={(e) => setValue(e.target.value)}
+                disabled={disabled}
+                className="input-field w-16 text-center"
+                autoFocus
+                aria-label="Contribution percentage value"
+                title="Enter contribution percentage"
+              />
+              <span className="text-harbor-700 font-medium">%</span>
+            </div>
+          </div>
+          <div className="flex justify-between text-xs text-sage-500">
+            <span>0%</span>
+            <span>25%</span>
+            <span>50%</span>
+          </div>
+          <div className="flex gap-2 sm:gap-3">
+            {cancelButton}
+            <button
+              type="button"
+              onClick={() => {
+                if (disabled) return;
+                if (editing && onSubmitEdit) {
+                  onSubmitEdit(editing.index, `${value || "6"}%`);
+                } else {
+                  onSend(`${value || "6"}%`);
                 }
                 setValue("");
               }}

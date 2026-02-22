@@ -24,7 +24,9 @@ function formatDisplayContent(content: string): string {
   const numericMatch = trimmed.match(/^[\d,]+$/);
   if (numericMatch) {
     const num = parseInt(trimmed.replace(/,/g, ""), 10);
-    if (!isNaN(num) && num >= 1000) {
+    // Skip formatting for years (4-digit numbers between 1900-2100)
+    const isLikelyYear = num >= 1900 && num <= 2100 && trimmed.length === 4;
+    if (!isNaN(num) && num >= 1000 && !isLikelyYear) {
       return "$" + num.toLocaleString("en-US");
     }
   }
@@ -47,6 +49,7 @@ interface ChatMessageProps {
   updatedByIndex?: number;
   isUpdate?: boolean;
   updateLabel?: string;
+  fieldLabel?: string;
   onScrollToMessage?: (index: number) => void;
 }
 
@@ -90,10 +93,14 @@ export default function ChatMessage({
   updatedByIndex,
   isUpdate,
   updateLabel,
+  fieldLabel,
   onScrollToMessage,
 }: ChatMessageProps) {
-  const canReply = role === "user" && onEdit && messageIndex !== undefined && !updatedByIndex && !isUpdate;
+  const canReply = role === "user" && onEdit && messageIndex !== undefined && !updatedByIndex;
   const hasBeenUpdated = updatedByIndex !== undefined;
+  
+  // Determine which label to show: updateLabel for updates, fieldLabel for regular user messages
+  const displayLabel = isUpdate ? updateLabel : (role === "user" ? fieldLabel : undefined);
 
   return (
     <div
@@ -107,10 +114,10 @@ export default function ChatMessage({
         "flex flex-col max-w-[80%]",
         role === "user" ? "items-end" : "items-start"
       )}>
-        {/* Update label for correction messages */}
-        {isUpdate && updateLabel && (
-          <span className="mb-1 text-[10px] font-medium text-harbor-500 uppercase tracking-wide">
-            {updateLabel}
+        {/* Field label for user messages */}
+        {displayLabel && displayLabel !== "answer" && (
+          <span className="mb-1 text-[10px] font-medium text-sage-500 uppercase tracking-wide">
+            {displayLabel}
           </span>
         )}
         <div className="relative flex items-end gap-2">

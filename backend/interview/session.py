@@ -383,6 +383,12 @@ def _client_friendly_ack(
         return "Thanks, I have your income."
     if "accounts.retirement_balance" in applied_paths:
         return "Great, I have your retirement balance."
+    if "accounts.has_employer_plan" in applied_paths:
+        return "Thanks for letting me know about your employer plan."
+    if "accounts.employer_match_percent" in applied_paths:
+        return "Great, I have your employer match information."
+    if "accounts.employee_contribution_percent" in applied_paths:
+        return "Perfect, I have your contribution rate."
     if "accounts.savings_rate_percent" in applied_paths:
         return "Great, I have your savings rate."
     if "spending.retirement_monthly_real" in applied_paths:

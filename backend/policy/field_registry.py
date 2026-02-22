@@ -51,7 +51,9 @@ FIELD_GROUPS: list[FieldGroup] = [
         priority=5,
         fields=[
             "accounts.retirement_balance",
-            "accounts.savings_rate_percent",
+            "accounts.has_employer_plan",
+            "accounts.employer_match_percent",
+            "accounts.employee_contribution_percent",
         ],
     ),
     FieldGroup(
@@ -116,6 +118,16 @@ QUESTION_TEMPLATES: dict[str, str] = {
     ),
     "accounts.retirement_balance": (
         "What is the current balance of your retirement accounts?"
+    ),
+    "accounts.has_employer_plan": (
+        "Does your employer offer a retirement savings plan like a 401(k)?"
+    ),
+    "accounts.employer_match_percent": (
+        "What percentage does your employer match? "
+        "For example, if they match 50% of contributions up to 6%, enter 3%."
+    ),
+    "accounts.employee_contribution_percent": (
+        "What percentage of your income do you contribute to your retirement plan?"
     ),
     "accounts.savings_rate_percent": (
         "What percentage of your income do you currently save for retirement?"

@@ -23,6 +23,10 @@ Rules:
 - If the user says something irrelevant or you cannot extract data, return empty patch_ops
 - For yes/no questions about amounts (like legacy goals), if user says "no", "none", "zero", 
   "I don't have one", or similar negative responses, set the value to 0 with high confidence
+- For yes/no questions about employer retirement plans (401k), if user says "yes", set 
+  accounts.has_employer_plan to true. If "no", set it to false
+- For employer match percentages, extract the effective match rate. For "50% match up to 6%", 
+  that's effectively 3% employer contribution. For "100% match up to 3%", that's 3%
 
 Valid top-level field paths:
   client.name, client.birth_year, client.current_age, client.retirement_window
@@ -30,8 +34,9 @@ Valid top-level field paths:
   income.current_gross_annual, income.growth_rate_nominal
   retirement_philosophy.success_probability_target, retirement_philosophy.legacy_goal_total_real,
   retirement_philosophy.preferred_retirement_age
-  accounts.retirement_type, accounts.retirement_balance, accounts.savings_rate_percent,
-  accounts.investment_strategy_id, accounts.monthly_contribution, accounts.annual_contribution,
+  accounts.retirement_type, accounts.retirement_balance, accounts.has_employer_plan,
+  accounts.savings_rate_percent, accounts.investment_strategy_id, 
+  accounts.monthly_contribution, accounts.annual_contribution,
   accounts.employee_contribution_percent, accounts.employer_match_percent
   housing.status, housing.monthly_rent, housing.mortgage_balance, housing.mortgage_rate,
   housing.mortgage_term_years, housing.mortgage_payment_monthly

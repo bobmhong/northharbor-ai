@@ -27,7 +27,12 @@ def should_skip_mortgage_fields(schema: CanonicalPlanSchema) -> bool:
 
 
 def should_skip_employer_match(schema: CanonicalPlanSchema) -> bool:
-    """Skip employer match questions if self-employed or no employer plan."""
+    """Skip employer match questions if no employer plan."""
+    has_plan = _pf_value(schema.accounts.has_employer_plan)
+    # Skip if they explicitly said no to having an employer plan
+    if has_plan is False or (isinstance(has_plan, str) and has_plan.lower() in ("no", "false")):
+        return True
+    # Also skip if account type indicates self-employed
     acct_type = _pf_value(schema.accounts.retirement_type)
     if isinstance(acct_type, str) and acct_type.lower() in (
         "ira",
@@ -54,5 +59,6 @@ EXCLUSION_CHECKS: dict[str, Any] = {
     "housing.mortgage_term_years": should_skip_mortgage_fields,
     "housing.mortgage_payment_monthly": should_skip_mortgage_fields,
     "accounts.employer_match_percent": should_skip_employer_match,
+    "accounts.employee_contribution_percent": should_skip_employer_match,
     "accounts.employer_non_elective_percent": should_skip_employer_match,
 }

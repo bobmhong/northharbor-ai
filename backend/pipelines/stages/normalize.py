@@ -51,15 +51,22 @@ def normalize_inputs(schema: CanonicalPlanSchema) -> dict[str, Any]:
     birth_year = int(_pf_val(schema.client.birth_year, 1970))
     start_age = max(retirement_ages[0] - 5, birth_year and (2026 - birth_year) or 56)
 
+    # Calculate total savings rate from employee contribution + employer match
+    # Fall back to savings_rate_percent if the new fields aren't populated
+    employee_contrib = float(_pf_val(schema.accounts.employee_contribution_percent, 0))
+    employer_match = float(_pf_val(schema.accounts.employer_match_percent, 0))
+    legacy_savings_rate = float(_pf_val(schema.accounts.savings_rate_percent, 0))
+    
+    # Use new fields if employee contribution is set, otherwise use legacy field
+    total_savings_rate = (employee_contrib + employer_match) if employee_contrib > 0 else legacy_savings_rate
+
     return {
         "plan_id": schema.plan_id,
         "birth_year": birth_year,
         "start_age": start_age,
         "retirement_ages": retirement_ages,
         "current_balance": float(_pf_val(schema.accounts.retirement_balance, 0)),
-        "savings_rate_percent": float(
-            _pf_val(schema.accounts.savings_rate_percent, 0)
-        ),
+        "savings_rate_percent": total_savings_rate,
         "gross_annual_income": float(
             _pf_val(schema.income.current_gross_annual, 0)
         ),

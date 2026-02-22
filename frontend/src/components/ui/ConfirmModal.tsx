@@ -55,13 +55,17 @@ export default function ConfirmModal({
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape" && isOpen && !isLoading) {
+      if (!isOpen || isLoading) return;
+      if (e.key === "Escape") {
         onCancel();
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        onConfirm();
       }
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, isLoading, onCancel]);
+  }, [isOpen, isLoading, onCancel, onConfirm]);
 
   if (!isOpen) return null;
 

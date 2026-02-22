@@ -145,8 +145,24 @@ def select_next_question(
             group_missing = [f for f in group.fields if f in missing]
             if group_missing:
                 target = group_missing[0]
+                question = QUESTION_TEMPLATES.get(target, f"Please provide {target}")
+                
+                # Dynamic question for employee contribution with match context
+                if target == "accounts.employee_contribution_percent":
+                    match_field = _resolve_field(schema, "accounts.employer_match_percent")
+                    if isinstance(match_field, ProvenanceField) and match_field.value:
+                        match_pct = match_field.value
+                        # Calculate minimum contribution to get full match
+                        # Assuming typical 50% match, minimum is 2x the match
+                        min_for_full_match = int(match_pct * 2)
+                        question = (
+                            f"What percentage of your income do you contribute to your retirement plan? "
+                            f"Your employer matches up to {match_pct}%. "
+                            f"Contributing at least {min_for_full_match}% captures the full match."
+                        )
+                
                 return PolicyDecision(
-                    next_question=QUESTION_TEMPLATES.get(target, f"Please provide {target}"),
+                    next_question=question,
                     target_field=target,
                     missing_fields=group_missing,
                     reason=f"Required group '{group.name}' incomplete",

@@ -21,8 +21,9 @@ function extractFieldName(question: string | undefined): string {
   if (q.includes("state") && (q.includes("live") || q.includes("reside") || q.includes("located"))) return "state";
   if (q.includes("city") && (q.includes("live") || q.includes("reside") || q.includes("located"))) return "city";
   
-  // Age
+  // Age / Birth year
   if (q.includes("retire") && (q.includes("age") || q.includes("when") || q.includes("plan to"))) return "target retirement age";
+  if (q.includes("birth year") || q.includes("year were you born") || q.includes("born in")) return "birth year";
   if (q.includes("current age") || q.includes("old are you") || q.includes("your age")) return "age";
   
   // Income
@@ -42,8 +43,23 @@ function extractFieldName(question: string | undefined): string {
       q.includes("monte carlo") || q.includes("probability of success") ||
       q.includes("confidence level") || q.includes("plan success")) return "success rate";
   
-  // Savings rate
-  if (q.includes("savings rate") || q.includes("percentage") || q.includes("% of your income") || q.includes("contribute") || q.includes("saving")) return "savings rate";
+  // Employer plan (yes/no)
+  if (q.includes("employer offer") || q.includes("employer retirement") ||
+      (q.includes("401(k)") && q.includes("offer")) || (q.includes("401k") && q.includes("offer")) ||
+      (q.includes("employer") && q.includes("plan"))) return "employer plan";
+  
+  // Employer match
+  if (q.includes("employer match") || q.includes("company match") ||
+      q.includes("matching contribution") || q.includes("does your employer match") ||
+      q.includes("what percentage does your employer")) return "employer match";
+  
+  // Employee contribution (specific to employer plan)
+  if ((q.includes("do you contribute") || q.includes("your contribution")) &&
+      (q.includes("retirement plan") || q.includes("401"))) return "contribution rate";
+  
+  // Savings rate (general)
+  if (q.includes("savings rate") || q.includes("percentage") || q.includes("% of your income") || 
+      q.includes("contribute") || q.includes("saving")) return "savings rate";
   
   return "answer";
 }
@@ -52,14 +68,15 @@ function formatCorrectionValue(value: string, fieldName: string): string {
   const trimmed = value.trim();
   
   // Text fields that should never be formatted - return as-is
-  const textFields = ["name", "state", "city"];
+  const textFields = ["name", "state", "city", "employer plan"];
   if (textFields.includes(fieldName)) {
     return trimmed;
   }
   
   // Percentage fields or values ending in %
-  if (fieldName === "savings rate" || fieldName === "success rate" || trimmed.match(/^\d+%$/)) {
-    const num = parseInt(trimmed.replace(/%$/, ""), 10);
+  const percentageFields = ["savings rate", "success rate", "employer match", "contribution rate"];
+  if (percentageFields.includes(fieldName) || trimmed.match(/^\d+%$/)) {
+    const num = parseFloat(trimmed.replace(/%$/, ""));
     if (!isNaN(num)) return `${num}%`;
     return trimmed;
   }
@@ -72,16 +89,20 @@ function formatCorrectionValue(value: string, fieldName: string): string {
     return trimmed;
   }
   
-  // Age fields - just return as-is
-  if (fieldName === "age" || fieldName === "target retirement age") {
+  // Age and year fields - just return as-is
+  if (fieldName === "age" || fieldName === "target retirement age" || fieldName === "birth year") {
     return trimmed;
   }
   
   // Auto-detect: if value looks like a large number or has $ sign, format as currency
+  // But exclude 4-digit years (1900-2100)
   const numericValue = trimmed.replace(/[$,]/g, "");
-  if (trimmed.startsWith("$") || (numericValue.match(/^\d+$/) && parseInt(numericValue, 10) >= 1000)) {
+  if (numericValue.match(/^\d+$/)) {
     const num = parseInt(numericValue, 10);
-    if (!isNaN(num)) return "$" + num.toLocaleString("en-US");
+    const isLikelyYear = num >= 1900 && num <= 2100 && numericValue.length === 4;
+    if (!isNaN(num) && !isLikelyYear && (trimmed.startsWith("$") || num >= 1000)) {
+      return "$" + num.toLocaleString("en-US");
+    }
   }
   
   return trimmed;
@@ -120,13 +141,17 @@ export default function InterviewPage() {
   } = useInterviewStore();
 
   useEffect(() => {
-    if (sessionId || startInterviewInFlight) {
+    // If we have a session but no messages, we need to reload the history
+    // This can happen if the user navigates away and comes back
+    const needsReload = !sessionId || (sessionId && messages.length === 0);
+    
+    if (!needsReload || startInterviewInFlight) {
       return;
     }
     startInterviewInFlight = startNewInterview().finally(() => {
       startInterviewInFlight = null;
     });
-  }, [sessionId, planIdParam]);
+  }, [sessionId, planIdParam, messages.length]);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -234,9 +259,15 @@ export default function InterviewPage() {
 
   const handleEditMessage = useCallback(
     (index: number, content: string) => {
+      // Check if this is an update message - if so, use the original message's context
+      const currentMessage = messages[index];
+      const searchFromIndex = currentMessage?.originalIndex !== undefined 
+        ? currentMessage.originalIndex 
+        : index;
+      
       // Find the preceding assistant message to determine the input mode
       let precedingQuestion: string | undefined;
-      for (let i = index - 1; i >= 0; i--) {
+      for (let i = searchFromIndex - 1; i >= 0; i--) {
         if (messages[i]?.role === "assistant") {
           precedingQuestion = messages[i].content;
           break;
@@ -346,6 +377,25 @@ export default function InterviewPage() {
     return undefined;
   }, [messages]);
 
+  // Compute field labels for each user message based on preceding assistant question
+  const fieldLabels = useMemo(() => {
+    const labels: Record<number, string> = {};
+    for (let i = 0; i < messages.length; i++) {
+      if (messages[i].role === "user") {
+        // Find preceding assistant message
+        let precedingQuestion: string | undefined;
+        for (let j = i - 1; j >= 0; j--) {
+          if (messages[j].role === "assistant") {
+            precedingQuestion = messages[j].content;
+            break;
+          }
+        }
+        labels[i] = extractFieldName(precedingQuestion);
+      }
+    }
+    return labels;
+  }, [messages]);
+
   const conversationContext = useMemo(() => {
     return messages
       .slice(-6)
@@ -397,6 +447,7 @@ export default function InterviewPage() {
                 updatedByIndex={msg.updatedByIndex}
                 isUpdate={msg.isUpdate}
                 updateLabel={msg.updateLabel}
+                fieldLabel={fieldLabels[i]}
                 onScrollToMessage={scrollToMessage}
               />
             ))}
