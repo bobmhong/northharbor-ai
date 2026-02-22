@@ -26,6 +26,35 @@ from backend.policy.field_registry import (
 )
 from backend.policy.rules import EXCLUSION_CHECKS
 
+FIELD_FRIENDLY_NAMES: dict[str, str] = {
+    "client.name": "your name",
+    "client.birth_year": "your birth year",
+    "location.state": "your state",
+    "location.city": "your city",
+    "income.current_gross_annual": "your annual income",
+    "retirement_philosophy.success_probability_target": "your success target",
+    "retirement_philosophy.legacy_goal_total_real": "your legacy goal",
+    "client.retirement_window": "your retirement age range",
+    "accounts.retirement_balance": "your retirement balance",
+    "accounts.has_employer_plan": "whether you have an employer retirement plan",
+    "accounts.employer_match_percent": "your employer match percentage",
+    "accounts.employee_contribution_percent": "your contribution percentage",
+    "accounts.savings_rate_percent": "your savings rate",
+    "spending.retirement_monthly_real": "your monthly retirement spending",
+    "social_security.combined_at_67_monthly": "your Social Security estimate at age 67",
+    "social_security.combined_at_70_monthly": "your Social Security estimate at age 70",
+    "monte_carlo.required_success_rate": "your minimum success rate",
+    "monte_carlo.horizon_age": "your planning horizon age",
+    "monte_carlo.legacy_floor": "your minimum ending balance target",
+    "housing.status": "your housing status",
+    "accounts.investment_strategy_id": "your investment strategy",
+    "social_security.claiming_preference": "your Social Security claiming age",
+}
+
+
+def _friendly_field_name(path: str) -> str:
+    return FIELD_FRIENDLY_NAMES.get(path, "that value")
+
 
 class PolicyDecision(BaseModel):
     """Result of the policy engine's next-question selection."""
@@ -148,7 +177,9 @@ def select_next_question(
             group_missing = [f for f in group.fields if f in missing]
             if group_missing:
                 target = group_missing[0]
-                question = QUESTION_TEMPLATES.get(target, f"Please provide {target}")
+                question = QUESTION_TEMPLATES.get(
+                    target, f"Please share {_friendly_field_name(target)}."
+                )
                 
                 # Dynamic question for employee contribution with match context
                 if target == "accounts.employee_contribution_percent":
@@ -178,12 +209,12 @@ def select_next_question(
         display_value = value.value if isinstance(value, ProvenanceField) else value
         template = CONFIRM_TEMPLATES.get(
             field_path,
-            f"I have {field_path} as {{value}}. Can you confirm?",
+            f"I have {_friendly_field_name(field_path)} as {{value}}. Can you confirm?",
         )
         try:
             question = template.format(value=display_value)
         except (KeyError, ValueError):
-            question = f"Can you confirm the value for {field_path}?"
+            question = f"Can you confirm {_friendly_field_name(field_path)}?"
         return PolicyDecision(
             next_question=question,
             target_field=field_path,
@@ -196,7 +227,10 @@ def select_next_question(
         target = optional_missing[0]
         return PolicyDecision(
             next_question=OPTIONAL_TEMPLATES.get(
-                target, QUESTION_TEMPLATES.get(target, f"Would you like to provide {target}?")
+                target,
+                QUESTION_TEMPLATES.get(
+                    target, f"Would you like to share {_friendly_field_name(target)}?"
+                ),
             ),
             target_field=target,
             missing_fields=[],

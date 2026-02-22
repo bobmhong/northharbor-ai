@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import ChatInput, { detectEditIntent } from "../components/interview/ChatInput";
@@ -42,6 +42,12 @@ function extractFieldName(question: string | undefined): string {
   if (q.includes("success rate") || q.includes("success probability") || 
       q.includes("monte carlo") || q.includes("probability of success") ||
       q.includes("confidence level") || q.includes("plan success")) return "success rate";
+
+  // Social Security claiming age
+  if (q.includes("claim social security") || q.includes("claiming social security") ||
+      q.includes("start claiming social security") || q.includes("claiming age")) {
+    return "Social Security claiming age";
+  }
   
   // Employer plan (yes/no)
   if (q.includes("employer offer") || q.includes("employer retirement") ||
@@ -90,6 +96,8 @@ function fieldLabelFromPath(fieldPath?: string | null): string | undefined {
       return "savings rate";
     case "spending.retirement_monthly_real":
       return "monthly spending";
+    case "social_security.claiming_preference":
+      return "Social Security claiming age";
     case "retirement_philosophy.success_probability_target":
     case "monte_carlo.required_success_rate":
       return "success rate";
@@ -124,7 +132,12 @@ function formatCorrectionValue(value: string, fieldName: string): string {
   }
   
   // Age and year fields - just return as-is
-  if (fieldName === "age" || fieldName === "target retirement age" || fieldName === "birth year") {
+  if (
+    fieldName === "age" ||
+    fieldName === "target retirement age" ||
+    fieldName === "birth year" ||
+    fieldName === "Social Security claiming age"
+  ) {
     return trimmed;
   }
   
@@ -155,6 +168,9 @@ export default function InterviewPage() {
   const planIdParam = searchParams.get("plan_id") ?? undefined;
   const scrollRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const inputPanelRef = useRef<HTMLDivElement>(null);
+  const [inputCollapsed, setInputCollapsed] = useState(false);
+  const [inputPanelHeight, setInputPanelHeight] = useState(96);
   const {
     sessionId,
     planId,
@@ -239,6 +255,25 @@ export default function InterviewPage() {
     return undefined;
   }, [messages]);
 
+  const currentTargetValue = useMemo(() => {
+    if (!currentTargetField) return undefined;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "user" && messages[i].fieldPath === currentTargetField) {
+        return messages[i].content;
+      }
+    }
+    return undefined;
+  }, [messages, currentTargetField]);
+
+  const latestBirthYearValue = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "user" && messages[i].fieldPath === "client.birth_year") {
+        return messages[i].content;
+      }
+    }
+    return undefined;
+  }, [messages]);
+
   const handleSend = useCallback(
     async (message: string) => {
       addMessage("user", message, { fieldPath: currentTargetField ?? undefined });
@@ -302,6 +337,7 @@ export default function InterviewPage() {
 
   const handleEditMessage = useCallback(
     (index: number, content: string) => {
+      setInputCollapsed(false);
       // Check if this is an update message - if so, use the original message's context
       const currentMessage = messages[index];
       const searchFromIndex = currentMessage?.originalIndex !== undefined 
@@ -406,7 +442,31 @@ export default function InterviewPage() {
     [messages, addMessage, handleSend]
   );
 
-  const inputHeight = editing ? 120 : isComplete ? 140 : 80;
+  const inputHeight = inputCollapsed ? 64 : Math.max(80, inputPanelHeight + 12);
+
+  useEffect(() => {
+    if (!inputPanelRef.current || inputCollapsed) {
+      return;
+    }
+    const element = inputPanelRef.current;
+    const observer = new ResizeObserver(() => {
+      setInputPanelHeight(element.offsetHeight);
+    });
+    observer.observe(element);
+    setInputPanelHeight(element.offsetHeight);
+    return () => observer.disconnect();
+  }, [inputCollapsed, editing, isComplete, currentTargetField]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (editing) return;
+      if (inputCollapsed) return;
+      setInputCollapsed(true);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [editing, inputCollapsed]);
 
   const scrollToMessage = useCallback((targetIndex: number) => {
     const container = chatContainerRef.current;
@@ -525,45 +585,67 @@ export default function InterviewPage() {
         </div>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-sm border-t border-sage-200/60 shadow-elevated">
-        <div className="mx-auto max-w-2xl px-4 sm:px-6 py-3">
-          <ChatInput
-            onSend={handleSendWithEditDetection}
-            disabled={isLoading || isComplete}
-            placeholder={
-              isComplete
-                ? "Interview complete! View your dashboard."
-                : "Type your answer..."
-            }
-            lastAssistantMessage={lastAssistantMessage}
-            currentTargetField={currentTargetField}
-            conversationContext={conversationContext}
-            editing={editing}
-            onCancelEdit={handleCancelEdit}
-            onSubmitEdit={handleSubmitEdit}
-          />
-
-          {isComplete && (
-            <div className="mt-3 rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50 px-4 py-3">
-              <div className="flex items-center justify-center gap-2 text-emerald-700 text-sm">
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span className="font-medium">
-                  {isResumed 
-                    ? "This plan is complete. Would you like to change any of your answers?" 
-                    : "Interview complete! Your plan is ready for analysis."}
-                </span>
-              </div>
-              {isResumed && (
-                <p className="mt-2 text-xs text-sage-600 text-center">
-                  Click the reply icon next to any of your answers above to make changes.
-                </p>
-              )}
-            </div>
-          )}
+      {inputCollapsed ? (
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-sm border-t border-sage-200/60 shadow-elevated">
+          <div className="mx-auto max-w-2xl px-4 sm:px-6 py-2.5 flex items-center justify-between gap-3">
+            <span className="text-xs text-sage-600">
+              Input hidden. Press Escape while typing to hide.
+            </span>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => setInputCollapsed(false)}
+            >
+              Show input
+            </button>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div
+          ref={inputPanelRef}
+          className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-sm border-t border-sage-200/60 shadow-elevated"
+        >
+          <div className="mx-auto max-w-2xl px-4 sm:px-6 py-3">
+            <ChatInput
+              onSend={handleSendWithEditDetection}
+              disabled={isLoading || isComplete}
+              placeholder={
+                isComplete
+                  ? "Interview complete! View your dashboard."
+                  : "Type your answer..."
+              }
+              lastAssistantMessage={lastAssistantMessage}
+              currentTargetField={currentTargetField}
+              currentTargetValue={currentTargetValue}
+              clientBirthYearValue={latestBirthYearValue}
+              conversationContext={conversationContext}
+              editing={editing}
+              onCancelEdit={handleCancelEdit}
+              onSubmitEdit={handleSubmitEdit}
+            />
+
+            {isComplete && (
+              <div className="mt-3 rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50 px-4 py-3">
+                <div className="flex items-center justify-center gap-2 text-emerald-700 text-sm">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className="font-medium">
+                    {isResumed 
+                      ? "This plan is complete. Would you like to change any of your answers?" 
+                      : "Interview complete! Your plan is ready for analysis."}
+                  </span>
+                </div>
+                {isResumed && (
+                  <p className="mt-2 text-xs text-sage-600 text-center">
+                    Click the reply icon next to any of your answers above to make changes.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 }

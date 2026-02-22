@@ -2,7 +2,7 @@ import { useRef, useState, useEffect, type FormEvent, useMemo } from "react";
 import Typeahead from "../ui/Typeahead";
 import { getStatesForAutocomplete, getCitiesForState } from "../../data/locations";
 
-type InputMode = "text" | "state" | "city" | "income" | "legacy" | "balance" | "spending" | "percentage" | "success_rate" | "employer_plan" | "employer_match" | "employee_contribution";
+type InputMode = "text" | "state" | "city" | "income" | "legacy" | "balance" | "spending" | "percentage" | "success_rate" | "claiming_age" | "employer_plan" | "employer_match" | "employee_contribution";
 
 const INCOME_SUGGESTIONS = [
   { value: "50000", label: "$50,000" },
@@ -80,12 +80,78 @@ function stripMonetaryFormatting(value: string): string {
   return trimmed;
 }
 
+function extractConfirmationValue(message?: string): string | undefined {
+  if (!message) return undefined;
+  // Handles messages like: "I have your planning horizon age as 95. Can you confirm?"
+  const match = message.match(/\bas\s+([^\n.?!]+)\s*\.\s*Can you confirm\??/i);
+  if (!match) return undefined;
+  return match[1].trim();
+}
+
+function parseNumericValue(raw?: string): number | undefined {
+  if (!raw) return undefined;
+  const num = parseFloat(raw.replace(/[%,$,\s]/g, ""));
+  if (isNaN(num)) return undefined;
+  return num;
+}
+
+function getFullRetirementAge(birthYear?: number): number {
+  if (!birthYear || birthYear <= 0) return 67;
+  if (birthYear <= 1937) return 65;
+  if (birthYear === 1938) return 65 + 2 / 12;
+  if (birthYear === 1939) return 65 + 4 / 12;
+  if (birthYear === 1940) return 65 + 6 / 12;
+  if (birthYear === 1941) return 65 + 8 / 12;
+  if (birthYear === 1942) return 65 + 10 / 12;
+  if (birthYear <= 1954) return 66;
+  if (birthYear === 1955) return 66 + 2 / 12;
+  if (birthYear === 1956) return 66 + 4 / 12;
+  if (birthYear === 1957) return 66 + 6 / 12;
+  if (birthYear === 1958) return 66 + 8 / 12;
+  if (birthYear === 1959) return 66 + 10 / 12;
+  return 67;
+}
+
+function formatFraLabel(fra: number): string {
+  const years = Math.floor(fra);
+  const months = Math.round((fra - years) * 12);
+  if (months <= 0) return `${years}`;
+  return `${years} years ${months} months`;
+}
+
+function estimateBenefitPercentAtAge(claimAge: number, fra: number): number {
+  if (claimAge < fra) {
+    return Math.max(70, 100 - (fra - claimAge) * 6.67);
+  }
+  if (claimAge > fra) {
+    return Math.min(124, 100 + (claimAge - fra) * 8);
+  }
+  return 100;
+}
+
+function getBenefitBarWidthClass(percentOfMax: number): string {
+  const pct = Math.max(0, Math.min(100, percentOfMax));
+  if (pct >= 95) return "w-full";
+  if (pct >= 85) return "w-11/12";
+  if (pct >= 75) return "w-10/12";
+  if (pct >= 65) return "w-8/12";
+  if (pct >= 55) return "w-7/12";
+  if (pct >= 45) return "w-6/12";
+  if (pct >= 35) return "w-5/12";
+  if (pct >= 25) return "w-4/12";
+  if (pct >= 15) return "w-3/12";
+  if (pct >= 5) return "w-2/12";
+  return "w-1/12";
+}
+
 interface ChatInputProps {
   onSend: (message: string) => void;
   disabled?: boolean;
   placeholder?: string;
   lastAssistantMessage?: string;
   currentTargetField?: string;
+  currentTargetValue?: string;
+  clientBirthYearValue?: string;
   conversationContext?: string;
   editing?: EditingState | null;
   onCancelEdit?: () => void;
@@ -110,6 +176,8 @@ function detectInputMode(message?: string, context?: string, targetField?: strin
     case "retirement_philosophy.success_probability_target":
     case "monte_carlo.required_success_rate":
       return { mode: "success_rate" };
+    case "social_security.claiming_preference":
+      return { mode: "claiming_age" };
     case "accounts.has_employer_plan":
       return { mode: "employer_plan" };
     case "accounts.employer_match_percent":
@@ -136,6 +204,13 @@ function detectInputMode(message?: string, context?: string, targetField?: strin
       lastSentence.includes("confidence level") || lastSentence.includes("plan success") ||
       (lastSentence.includes("success") && lastSentence.includes("%"))) {
     return { mode: "success_rate" };
+  }
+
+  // Social Security claiming age detection
+  if (text.includes("claim social security") || text.includes("claiming social security") ||
+      text.includes("start claiming social security") || text.includes("claiming age") ||
+      (text.includes("social security") && text.includes("62") && text.includes("70"))) {
+    return { mode: "claiming_age" };
   }
   
   // Employer plan detection (yes/no question)
@@ -241,15 +316,20 @@ export default function ChatInput({
   placeholder = "Type your answer...",
   lastAssistantMessage,
   currentTargetField,
+  currentTargetValue,
+  clientBirthYearValue,
   conversationContext,
   editing,
   onCancelEdit,
   onSubmitEdit,
 }: ChatInputProps) {
   const [value, setValue] = useState("");
+  const [claimTipOpen, setClaimTipOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const claimTipRef = useRef<HTMLDivElement>(null);
   
   const prevDisabledRef = useRef(disabled);
+  const prevModeRef = useRef<InputMode | null>(null);
   
   useEffect(() => {
     if (editing) {
@@ -280,15 +360,84 @@ export default function ChatInput({
     [modeMessage, conversationContext, modeTargetField]
   );
 
-  // Set default value for percentage modes immediately
+  const defaultSuccessRate = useMemo(() => {
+    // Use existing value for this field if available, otherwise default to 95%
+    const raw = (currentTargetValue || "").trim();
+    if (!raw) return "95";
+
+    const numeric = parseFloat(raw.replace(/[%,$,\s]/g, ""));
+    if (!isNaN(numeric)) {
+      // If value is stored as ratio (e.g., 0.95), convert to percentage
+      const asPercent = numeric <= 1 ? numeric * 100 : numeric;
+      const clamped = Math.max(60, Math.min(99, Math.round(asPercent)));
+      return String(clamped);
+    }
+    return "95";
+  }, [currentTargetValue]);
+  const hasSavedSuccessRate = Boolean((currentTargetValue || "").trim());
+  const birthYearNum = useMemo(() => {
+    const parsed = parseNumericValue(clientBirthYearValue);
+    if (!parsed) return undefined;
+    return Math.round(parsed);
+  }, [clientBirthYearValue]);
+  const fra = useMemo(() => getFullRetirementAge(birthYearNum), [birthYearNum]);
+  const defaultClaimingAge = useMemo(() => {
+    const existing = parseNumericValue(currentTargetValue);
+    const base = existing ? Math.round(existing) : Math.round(fra);
+    return String(Math.max(62, Math.min(70, base)));
+  }, [currentTargetValue, fra]);
+
+  // Set defaults when entering mode-specific controls; avoid re-seeding while staying on same mode.
   useEffect(() => {
-    if (mode === "percentage" && !value && !editing) {
+    if (editing) return;
+
+    const prevMode = prevModeRef.current;
+    const modeChanged = prevMode !== mode;
+
+    if (!modeChanged) {
+      return;
+    }
+
+    // Clear stale numeric defaults when moving from slider controls to plain text.
+    const cameFromSlider =
+      prevMode === "percentage" ||
+      prevMode === "success_rate" ||
+      prevMode === "claiming_age" ||
+      prevMode === "employer_match" ||
+      prevMode === "employee_contribution";
+    if (cameFromSlider && mode === "text") {
+      setValue("");
+    }
+
+    if (mode === "percentage") {
       setValue("6");
+    } else if (mode === "success_rate") {
+      setValue(defaultSuccessRate);
+    } else if (mode === "claiming_age") {
+      setValue(defaultClaimingAge);
+    } else if (mode === "text") {
+      const confirmValue = extractConfirmationValue(lastAssistantMessage);
+      if (confirmValue) {
+        setValue(stripMonetaryFormatting(confirmValue));
+      }
     }
-    if (mode === "success_rate" && !value && !editing) {
-      setValue("90");
-    }
-  }, [mode, value, editing]);
+  }, [mode, editing, defaultSuccessRate, defaultClaimingAge, lastAssistantMessage]);
+
+  useEffect(() => {
+    prevModeRef.current = mode;
+  }, [mode]);
+
+  useEffect(() => {
+    if (!claimTipOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (!claimTipRef.current) return;
+      if (!claimTipRef.current.contains(e.target as Node)) {
+        setClaimTipOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [claimTipOpen]);
 
   // Handle Escape key to cancel editing
   useEffect(() => {
@@ -308,7 +457,7 @@ export default function ChatInput({
   // Handle Enter key to submit default values for slider/button modes
   useEffect(() => {
     // Only handle for modes that don't have a standard form submit
-    const enterModes = ["employer_plan", "employer_match", "employee_contribution", "percentage", "success_rate"];
+    const enterModes = ["employer_plan", "employer_match", "employee_contribution", "percentage", "success_rate", "claiming_age"];
     if (!enterModes.includes(mode)) return;
     if (disabled) return;
     
@@ -335,7 +484,9 @@ export default function ChatInput({
       } else if (mode === "percentage") {
         submitValue = `${value || "6"}%`;
       } else if (mode === "success_rate") {
-        submitValue = `${value || "90"}%`;
+        submitValue = `${value || defaultSuccessRate}%`;
+      } else if (mode === "claiming_age") {
+        submitValue = `${value || defaultClaimingAge}`;
       }
       
       if (editing && onSubmitEdit) {
@@ -348,7 +499,7 @@ export default function ChatInput({
     
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [mode, value, disabled, editing, onSubmitEdit, onSend]);
+  }, [mode, value, disabled, editing, onSubmitEdit, onSend, defaultSuccessRate, defaultClaimingAge]);
 
   const stateOptions = useMemo(() => getStatesForAutocomplete(), []);
   const cityOptions = useMemo(
@@ -605,7 +756,7 @@ export default function ChatInput({
   }
 
   if (mode === "success_rate") {
-    const defaultRate = 90;
+    const defaultRate = parseInt(defaultSuccessRate, 10) || 95;
     const rateValue = value ? parseInt(value, 10) : defaultRate;
     const displayRate = isNaN(rateValue) ? defaultRate : Math.max(60, Math.min(99, rateValue));
     const isDefault = !value || value === String(defaultRate);
@@ -648,7 +799,7 @@ export default function ChatInput({
           {/* Current value display */}
           <div className="text-center">
             <span className="text-2xl font-bold text-harbor-700">{displayRate}%</span>
-            {isDefault && !editing && (
+            {isDefault && !editing && !hasSavedSuccessRate && (
               <span className="ml-2 text-xs text-sage-500">(recommended)</span>
             )}
           </div>
@@ -675,7 +826,7 @@ export default function ChatInput({
                 type="number"
                 min="60"
                 max="99"
-                value={value || "90"}
+                value={value || String(defaultRate)}
                 onChange={(e) => setValue(e.target.value)}
                 disabled={disabled}
                 className="input-field w-20 text-center"
@@ -698,9 +849,126 @@ export default function ChatInput({
               onClick={() => {
                 if (disabled) return;
                 if (editing && onSubmitEdit) {
-                  onSubmitEdit(editing.index, `${value || "90"}%`);
+                  onSubmitEdit(editing.index, `${value || String(defaultRate)}%`);
                 } else {
-                  onSend(`${value || "90"}%`);
+                  onSend(`${value || String(defaultRate)}%`);
+                }
+                setValue("");
+              }}
+              disabled={editing ? isSubmitDisabled : disabled}
+              className={editing ? "btn-primary flex-1" : "btn-primary w-full"}
+            >
+              {submitButtonText}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (mode === "claiming_age") {
+    const defaultAge = parseInt(defaultClaimingAge, 10) || 67;
+    const ageValue = value ? parseInt(value, 10) : defaultAge;
+    const displayAge = isNaN(ageValue) ? defaultAge : Math.max(62, Math.min(70, ageValue));
+    const ageTicks = [62, 63, 64, 65, 66, 67, 68, 69, 70];
+
+    return (
+      <div>
+        {editingHeader}
+        <div className="space-y-3">
+          <div className="text-center">
+            <span className="text-2xl font-bold text-harbor-700">Age {displayAge}</span>
+          </div>
+          <div className="rounded-lg border border-sage-200 bg-sage-50 px-3 py-2 text-center text-xs text-sage-700">
+            Full retirement age (FRA): <span className="font-semibold text-harbor-700">{formatFraLabel(fra)}</span>
+          </div>
+          <div className="relative flex items-center justify-center">
+            <div ref={claimTipRef} className="group relative inline-flex items-center">
+              <button
+                type="button"
+                onClick={() => setClaimTipOpen((open) => !open)}
+                className="inline-flex items-center gap-1 rounded-full border border-sage-300 bg-white px-3 py-1 text-xs font-medium text-sage-700 hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-harbor-300"
+                aria-label="Show Social Security claim age benefit tip"
+                title="Tip: see how claim age affects benefits"
+              >
+                <svg className="h-3.5 w-3.5 text-harbor-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Tip: claim age impact
+              </button>
+              <div className={`absolute bottom-full left-1/2 z-30 mb-2 w-[320px] -translate-x-1/2 rounded-lg border border-sage-200 bg-white p-3 shadow-elevated ${claimTipOpen ? "block" : "hidden group-hover:block group-focus-within:block"}`}>
+                <p className="mb-2 text-xs font-medium text-sage-700">
+                  Estimated monthly benefit impact (relative to FRA = 100%)
+                </p>
+                <div className="space-y-1.5">
+                  {ageTicks.map((age) => {
+                    const pct = Math.round(estimateBenefitPercentAtAge(age, fra));
+                    const isSelected = age === displayAge;
+                    const widthClass = getBenefitBarWidthClass((pct / 124) * 100);
+                    return (
+                      <div key={age} className="flex items-center gap-2">
+                        <span className={`w-8 text-xs ${isSelected ? "font-semibold text-harbor-700" : "text-sage-600"}`}>
+                          {age}
+                        </span>
+                        <div className="h-2 flex-1 rounded bg-sage-100">
+                          <div
+                            className={`h-2 rounded ${widthClass} ${isSelected ? "bg-harbor-500" : "bg-sage-300"}`}
+                          />
+                        </div>
+                        <span className={`w-12 text-right text-xs ${isSelected ? "font-semibold text-harbor-700" : "text-sage-600"}`}>
+                          {pct}%
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <input
+              type="range"
+              min="62"
+              max="70"
+              value={displayAge}
+              onChange={(e) => setValue(e.target.value)}
+              disabled={disabled}
+              className="flex-1 h-2 bg-sage-200 rounded-lg appearance-none cursor-pointer accent-harbor-500"
+              aria-label="Social Security claiming age slider"
+              title="Social Security claiming age"
+            />
+            <div className="flex items-center gap-2 min-w-[96px]">
+              <input
+                ref={inputRef}
+                type="number"
+                min="62"
+                max="70"
+                value={value || String(defaultAge)}
+                onChange={(e) => setValue(e.target.value)}
+                disabled={disabled}
+                className="input-field w-20 text-center"
+                autoFocus
+                aria-label="Claiming age value"
+                title="Enter claiming age"
+              />
+            </div>
+          </div>
+          <div className="flex justify-between text-xs text-sage-500">
+            <span>62</span>
+            <span>FRA {Math.round(fra)}</span>
+            <span>70</span>
+          </div>
+          <div className="flex gap-2 sm:gap-3">
+            {cancelButton}
+            <button
+              type="button"
+              onClick={() => {
+                if (disabled) return;
+                const submitVal = value || String(defaultAge);
+                if (editing && onSubmitEdit) {
+                  onSubmitEdit(editing.index, submitVal);
+                } else {
+                  onSend(submitVal);
                 }
                 setValue("");
               }}

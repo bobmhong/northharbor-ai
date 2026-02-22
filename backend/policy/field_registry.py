@@ -100,64 +100,66 @@ FIELD_GROUPS: list[FieldGroup] = [
 
 
 QUESTION_TEMPLATES: dict[str, str] = {
-    "client.name": "What is your full name?",
+    "client.name": "Great to meet you. What should I call you?",
     "client.birth_year": "What year were you born?",
-    "location.state": "Which state do you live in?",
-    "location.city": "Which city do you live in?",
-    "income.current_gross_annual": "What is your current gross annual income?",
+    "location.state": "Which state are you currently living in?",
+    "location.city": "And what city are you in?",
+    "income.current_gross_annual": "Could you share your current gross annual income?",
     "retirement_philosophy.success_probability_target": (
-        "What success probability target would you like for your retirement plan? "
-        "(e.g. 90%, 95%)"
+        "What level of plan success would help you feel comfortable? "
+        "(for example, 90% or 95%)"
     ),
     "retirement_philosophy.legacy_goal_total_real": (
-        "Do you have a legacy goal — an amount you'd like to leave behind "
-        "in today's dollars?"
+        "Would you like to leave a specific amount behind as a legacy "
+        "(in today's dollars)?"
     ),
     "client.retirement_window": (
-        "What is your target retirement age range? For example, 62 to 67."
+        "What retirement age are you aiming for? "
+        "A single age or a range (like 62 to 67) both work."
     ),
     "accounts.retirement_balance": (
-        "What is the current balance of your retirement accounts?"
+        "About how much do you currently have saved across retirement accounts?"
     ),
     "accounts.has_employer_plan": (
         "Does your employer offer a retirement savings plan like a 401(k)?"
     ),
     "accounts.employer_match_percent": (
-        "What percentage does your employer match? "
-        "For example, if they match 50% of contributions up to 6%, enter 3%."
+        "How much does your employer match? "
+        "For example, if they match 50% up to 6%, that is effectively 3%."
     ),
     "accounts.employee_contribution_percent": (
-        "What percentage of your income do you contribute to your retirement plan?"
+        "What percent of your income are you currently contributing?"
     ),
     "accounts.savings_rate_percent": (
-        "What percentage of your income do you currently save for retirement?"
+        "Overall, what percent of your income are you saving for retirement?"
     ),
     "spending.retirement_monthly_real": (
-        "How much do you expect to spend per month in retirement, "
-        "in today's dollars?"
+        "Roughly how much do you expect to spend each month in retirement "
+        "(in today's dollars)?"
     ),
     "social_security.combined_at_67_monthly": (
-        "What is your estimated combined monthly Social Security benefit at age 67?"
+        "What do you expect your combined monthly Social Security to be at age 67?"
     ),
     "social_security.combined_at_70_monthly": (
-        "What is your estimated combined monthly Social Security benefit at age 70?"
+        "And what would that monthly Social Security amount be at age 70?"
     ),
     "monte_carlo.required_success_rate": (
-        "What minimum success rate would you accept for your retirement plan?"
+        "What minimum success rate would you consider acceptable for your plan?"
     ),
     "monte_carlo.horizon_age": (
-        "To what age should we model your plan? (e.g. 95)"
+        "Up to what age should we model your plan? (for example, 95)"
     ),
     "monte_carlo.legacy_floor": (
-        "What is the minimum balance you'd like to have at the end of the plan?"
+        "At the end of the plan horizon, what minimum balance would you like to preserve?"
     ),
     "housing.status": "Do you currently rent or own your home?",
     "accounts.investment_strategy_id": (
-        "What investment strategy best describes your portfolio? "
-        "(e.g. conservative, moderate, aggressive)"
+        "How would you describe your investment style today "
+        "(for example: conservative, moderate, or aggressive)?"
     ),
     "social_security.claiming_preference": (
-        "At what age do you plan to start claiming Social Security? (62–70)"
+        "At what age are you planning to claim Social Security? "
+        "For most people, full retirement age is around 67 (claiming range: 62-70)."
     ),
 }
 
@@ -178,11 +180,12 @@ CONFIRM_TEMPLATES: dict[str, str] = {
 OPTIONAL_TEMPLATES: dict[str, str] = {
     "housing.status": "Do you currently rent or own your home?",
     "accounts.investment_strategy_id": (
-        "What investment strategy best describes your portfolio? "
-        "(e.g. conservative, moderate, aggressive)"
+        "How would you describe your investment style today "
+        "(for example: conservative, moderate, or aggressive)?"
     ),
     "social_security.claiming_preference": (
-        "At what age do you plan to start claiming Social Security? (62–70)"
+        "At what age are you planning to claim Social Security? "
+        "For most people, full retirement age is around 67 (claiming range: 62-70)."
     ),
 }
 
