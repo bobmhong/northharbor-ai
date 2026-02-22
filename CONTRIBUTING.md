@@ -56,6 +56,7 @@ For all common operations, prefer `task` commands over ad-hoc shell commands.
 - Use TypeScript strict mode
 - Format with Prettier
 - Lint with ESLint
+- Accessibility warnings in TSX (especially icon-only controls) must be fixed before merge
 
 ## Running Tests
 
@@ -72,6 +73,11 @@ task db:up
 task db:down
 task interview:smoke
 ```
+
+Frontend quality checks are now part of normal loops:
+- `task dev:frontend` runs `npm run check` before starting Vite
+- `task test:frontend` runs `npm run check` before tests
+- `task lint:frontend` runs `npm run check`
 
 ## Commit Messages
 

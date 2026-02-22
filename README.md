@@ -71,6 +71,8 @@ task dev:frontend
 Frontend: `http://localhost:5173`  
 Backend health: `http://localhost:8000/api/health`
 
+Note: `task dev:frontend` runs frontend lint + typecheck before launching Vite, so accessibility/type issues are caught early in the dev loop.
+
 ### Common operations
 
 ```bash

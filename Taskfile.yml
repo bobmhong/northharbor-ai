@@ -46,10 +46,10 @@ tasks:
         "{{.PYTHON}}" -m uvicorn backend.main:app --reload --host {{.BACKEND_HOST}} --port {{.BACKEND_PORT}}
 
   dev:frontend:
-    desc: Run frontend Vite dev server
+    desc: Run frontend checks, then Vite dev server
     dir: frontend
     cmds:
-      - npm run dev -- --port {{.FRONTEND_PORT}}
+      - npm run check && npm run dev -- --port {{.FRONTEND_PORT}}
 
   dev:
     desc: Run backend and frontend dev servers together
@@ -136,7 +136,11 @@ tasks:
             start_new_session=True,
         )
         frontend = subprocess.Popen(
-            ["npm", "run", "dev", "--", "--port", "{{.FRONTEND_PORT}}"],
+            [
+                "bash",
+                "-lc",
+                "npm run check && npm run dev -- --port {{.FRONTEND_PORT}}",
+            ],
             cwd=root / "frontend",
             stdout=frontend_log,
             stderr=subprocess.STDOUT,
@@ -288,10 +292,11 @@ tasks:
       - "{{.PYTHON}} -m pytest backend/tests"
 
   test:frontend:
-    desc: Run frontend test script when available
+    desc: Run frontend checks and test script when available
     dir: frontend
     cmds:
       - |
+        npm run check
         if npm run | rg -q " test"; then
           npm test
         else
@@ -314,10 +319,10 @@ tasks:
         fi
 
   lint:frontend:
-    desc: Run frontend ESLint
+    desc: Run frontend lint + typecheck
     dir: frontend
     cmds:
-      - npm run lint
+      - npm run check
 
   format:
     desc: Format backend code with ruff (if installed)

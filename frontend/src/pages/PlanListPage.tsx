@@ -205,6 +205,8 @@ export default function PlanListPage() {
                   <button
                     type="button"
                     className="rounded-lg border border-red-200 bg-red-50/50 px-3 py-2 text-xs font-medium text-red-600 transition-colors hover:bg-red-100 hover:border-red-300"
+                    aria-label={`Delete ${plan.display_name}`}
+                    title={`Delete ${plan.display_name}`}
                     onClick={(e) => {
                       e.preventDefault();
                       setPlanToDelete({ planId: plan.plan_id, displayName: plan.display_name });

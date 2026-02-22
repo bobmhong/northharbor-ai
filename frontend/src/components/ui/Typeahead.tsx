@@ -33,6 +33,7 @@ export default function Typeahead({
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const listboxIdRef = useRef(`typeahead-listbox-${Math.random().toString(36).slice(2, 10)}`);
 
   const filteredOptions = useMemo(() => 
     options.filter(
@@ -177,6 +178,7 @@ export default function Typeahead({
           aria-expanded={isOpen}
           aria-haspopup="listbox"
           aria-autocomplete="list"
+          aria-controls={isOpen && totalOptions > 0 ? listboxIdRef.current : undefined}
         />
       </div>
 
@@ -188,6 +190,7 @@ export default function Typeahead({
 
       {isOpen && totalOptions > 0 && (
         <ul
+          id={listboxIdRef.current}
           ref={listRef}
           className="absolute z-50 bottom-full mb-2 max-h-40 w-full overflow-auto rounded-xl border border-sage-200 bg-white py-1 shadow-elevated"
           role="listbox"
