@@ -472,6 +472,36 @@ def _is_affirmative(message: str) -> bool:
     return normalized in _AFFIRMATIVE_REPLIES
 
 
+_LOW_CONFIDENCE_THRESHOLD = 0.7
+
+
+def _boost_low_confidence_applied(
+    schema: CanonicalPlanSchema,
+    patch_result: PatchResult,
+    target_field: str | None,
+    user_message: str,
+) -> CanonicalPlanSchema:
+    """Boost confidence for just-applied fields if the deterministic parser can do better.
+
+    The LLM sometimes extracts values with low confidence even when the user
+    provides an unambiguous answer (e.g. "95%" from a slider).  The fallback
+    parser is deterministic and can confidently parse the same value, so we
+    use it as a confidence floor to avoid unnecessary confirmation loops.
+    """
+    if not target_field:
+        return schema
+    low_applied = [
+        p for p in patch_result.applied
+        if p.path == target_field and p.confidence < _LOW_CONFIDENCE_THRESHOLD
+    ]
+    if not low_applied:
+        return schema
+    boost = _fallback_patch_for_target(target_field, user_message)
+    if boost and boost.confidence >= _LOW_CONFIDENCE_THRESHOLD:
+        schema, _ = apply_patches(schema, [boost])
+    return schema
+
+
 _LINKED_FIELDS: list[tuple[str, str]] = [
     ("retirement_philosophy.success_probability_target", "monte_carlo.required_success_rate"),
 ]
@@ -584,6 +614,10 @@ class InterviewSession:
             if fallback_patch is not None:
                 updated_schema, fallback_result = apply_patches(updated_schema, [fallback_patch])
                 patch_result = _merge_patch_results(patch_result, fallback_result)
+        else:
+            updated_schema = _boost_low_confidence_applied(
+                updated_schema, patch_result, decision.target_field, user_message,
+            )
 
         updated_schema, _ = _sync_linked_fields(updated_schema)
         decision = select_next_question(updated_schema)
