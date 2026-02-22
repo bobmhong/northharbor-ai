@@ -81,6 +81,13 @@ task db:down
 task interview:smoke
 ```
 
+### LLM analytics persistence
+
+- LLM analytics events are captured in all environments and persisted via the store layer.
+- Default backend is MongoDB (`llm_usage_events` collection).
+- Indexes are ensured automatically on startup for `timestamp`, `model+timestamp`, and `session_id+timestamp`.
+- If Mongo initialization fails, analytics falls back to in-memory storage and logs a warning.
+
 ## Development
 
 Use `task --list` to see available workflows. For routine developer/operator operations, prefer `task` commands over ad-hoc shell commands.

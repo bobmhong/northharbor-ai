@@ -39,7 +39,11 @@ tasks:
   dev:backend:
     desc: Run backend API locally with auto-reload
     cmds:
-      - "{{.PYTHON}} -m uvicorn backend.main:app --reload --host {{.BACKEND_HOST}} --port {{.BACKEND_PORT}}"
+      - |
+        if command -v direnv >/dev/null 2>&1; then
+          eval "$(direnv export bash)"
+        fi
+        "{{.PYTHON}}" -m uvicorn backend.main:app --reload --host {{.BACKEND_HOST}} --port {{.BACKEND_PORT}}
 
   dev:frontend:
     desc: Run frontend Vite dev server
@@ -56,6 +60,9 @@ tasks:
     cmds:
       - |
         mkdir -p "{{.DEV_STATE_DIR}}"
+        if command -v direnv >/dev/null 2>&1; then
+          eval "$(direnv export bash)"
+        fi
 
         backend_running=0
         frontend_running=0

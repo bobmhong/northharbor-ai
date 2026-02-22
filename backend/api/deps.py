@@ -3,15 +3,25 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from pymongo import MongoClient
+from pymongo.database import Database
 
 from backend.ai.extractor import (
     LLMClient,
     OllamaLLMClient,
     OpenAILLMClient,
     StubLLMClient,
+)
+from backend.analytics.llm_tracker import get_llm_tracker
+from backend.analytics.store import (
+    InMemoryLLMAnalyticsStore,
+    LLMAnalyticsStore,
+    MongoLLMAnalyticsStore,
 )
 from backend.config import Settings, get_settings
 from backend.interview.session import InterviewMessage, InterviewSession
@@ -23,8 +33,11 @@ _snapshot_store: MemorySnapshotStore | None = None
 _sessions: dict[str, InterviewSession] = {}
 _plans: dict[str, CanonicalPlanSchema] = {}
 _llm: LLMClient | None = None
+_mongo_client: MongoClient[Any] | None = None
+_analytics_store: LLMAnalyticsStore | None = None
 _runtime_loaded = False
 _RUNTIME_STATE_PATH = Path(".data/runtime_state.json")
+logger = logging.getLogger(__name__)
 
 
 def get_snapshot_store() -> MemorySnapshotStore:
@@ -37,6 +50,7 @@ def get_snapshot_store() -> MemorySnapshotStore:
 def get_llm_client() -> LLMClient:
     global _llm
     if _llm is None:
+        get_llm_tracker(store=get_llm_analytics_store())
         settings = get_settings()
         provider = settings.llm_provider.strip().lower()
         if provider == "ollama":
@@ -50,7 +64,17 @@ def get_llm_client() -> LLMClient:
                 base_url=settings.openai_base_url,
                 timeout_seconds=settings.openai_timeout_seconds,
             )
+        elif provider == "openai":
+            logger.warning(
+                "LLM provider 'openai' selected but NORTHHARBOR_OPENAPI_KEY is empty; "
+                "falling back to StubLLMClient"
+            )
+            _llm = StubLLMClient()
         else:
+            logger.warning(
+                "Unsupported LLM provider '%s'; falling back to StubLLMClient",
+                settings.llm_provider,
+            )
             _llm = StubLLMClient()
     return _llm
 
@@ -58,6 +82,32 @@ def get_llm_client() -> LLMClient:
 def set_llm_client(llm: LLMClient) -> None:
     global _llm
     _llm = llm
+
+
+def _get_mongo_database() -> Database[Any]:
+    global _mongo_client
+    if _mongo_client is None:
+        settings = get_settings()
+        _mongo_client = MongoClient(settings.mongodb_uri)
+    settings = get_settings()
+    return _mongo_client[settings.mongodb_database]
+
+
+def get_llm_analytics_store() -> LLMAnalyticsStore:
+    global _analytics_store
+    if _analytics_store is None:
+        try:
+            store = MongoLLMAnalyticsStore(_get_mongo_database())
+            store.ensure_indexes()
+            _analytics_store = store
+        except Exception as exc:
+            logger.warning(
+                "Failed to initialize Mongo LLM analytics store; "
+                "falling back to in-memory store: %s",
+                exc,
+            )
+            _analytics_store = InMemoryLLMAnalyticsStore()
+    return _analytics_store
 
 
 def _ensure_runtime_loaded() -> None:

@@ -14,11 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Report generation (Markdown, PDF, JSON, Excel)
 - Auth0 authentication integration
 - React frontend with chat interface
+- Store-backed LLM analytics persistence with MongoDB implementation and indexes
 
 ### Changed
 - Added managed dev lifecycle tasks: `dev:up`, `dev:down`, and `dev:status`
 - Interview responses now use client-facing language instead of internal field labels
 - Plan and dashboard listings now show human-readable plan names (`<Client Name> - <Scenario Name>`)
+- LLM analytics tracking now captures metrics in all environments and no longer relies on local JSON files
+- `task dev:backend` and `task dev:up` now load `direnv` exports before backend startup
 
 ### Fixed
 - Interview fallback extraction now handles common name, birth year, location, and numeric inputs more reliably

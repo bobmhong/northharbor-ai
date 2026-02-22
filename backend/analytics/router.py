@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from backend.analytics.llm_tracker import get_llm_tracker
+from backend.api import deps as api_deps
 
 router = APIRouter(prefix="/api/admin/analytics", tags=["admin", "analytics"])
 
@@ -60,7 +61,7 @@ async def get_llm_analytics() -> LLMAnalyticsResponse:
             detail="Analytics endpoint is only available in development mode",
         )
 
-    tracker = get_llm_tracker()
+    tracker = get_llm_tracker(store=api_deps.get_llm_analytics_store())
     aggregated = tracker.get_aggregated_metrics()
     recent = tracker.get_recent_calls(limit=10)
 
